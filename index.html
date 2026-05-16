@@ -655,14 +655,6 @@
 <!-- MIC BUTTON (fallback) -->
 <button class="mic-btn" id="micBtn" onclick="startRecognition()">◈ ACTIVER LE MICROPHONE ◈</button>
 
-<!-- COMMANDS HINT -->
-<div class="commands-hint">
-  <div class="cmd-chip">📍 LOCALISATION</div>
-  <div class="cmd-chip">🗺 FERMER CARTE</div>
-  <div class="cmd-chip">🕐 HEURE</div>
-  <div class="cmd-chip">✅ STATUT</div>
-</div>
-
 <!-- OVERLAY -->
 <div class="overlay" id="overlay" onclick="closeMap()"></div>
 
@@ -916,7 +908,7 @@ function processCommand(text) {
     speak('Carte fermée.');
     setTranscript('Carte fermée', true);
     setCircleState('listening');
-  } else if (/(heure|time|quelle heure|horloge)/.test(t)) {
+  } else if (/(heure|time|quelle heureest t'il|horloge)/.test(t)) {
     const now = new Date();
     const h = now.getHours();
     const m = now.getMinutes();
@@ -929,7 +921,7 @@ function processCommand(text) {
     setTranscript('Tous systèmes nominaux', true);
     setCircleState('listening');
   } else if (/(bonjour|salut|hello|hey jarvis|bonsoir)/.test(t)) {
-    speak('Bonjour. Je suis J.A.R.V.I.S., à votre service.');
+    speak('Bonjour. Je suis JARVIS., à votre service.');
     setTranscript('Bonjour.', true);
     setCircleState('listening');
   } else if (/(merci|thank)/.test(t)) {
@@ -941,7 +933,7 @@ function processCommand(text) {
     setTranscript('Données météo non disponibles', true);
     setCircleState('listening');
   } else {
-    speak(`Commande non reconnue : ${text}. Dites localisation, heure, ou statut.`);
+    speak(`Commande non reconnue : ${text}.`);
     setTranscript('Commande inconnue : ' + text, false);
     setCircleState('listening');
   }
