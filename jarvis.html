@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A.R.C. — Adaptive Response Core</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Rajdhani:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --cyan: #00C8FF; --cyan-dim: #0088BB; --cyan-glow: rgba(0,200,255,0.15);
+  --orange: #FF6B00; --orange-glow: rgba(255,107,0,0.2);
+  --purple: #8844FF; --gold: #FFB830;
+  --bg: #000810; --panel: #000F1E; --panel2: #001628;
+  --text: #B0DFF0; --text-dim: #3A6A88; --border: rgba(0,200,255,0.18);
+}
+html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'Rajdhani', sans-serif; overflow: hidden; user-select: none; }
+
+body::after {
+  content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 9998;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.06) 2px, rgba(0,0,0,0.06) 4px);
+}
+
+#app {
+  position: relative; height: 100vh;
+  display: grid;
+  grid-template-columns: 220px 1fr 220px;
+  grid-template-rows: 54px 1fr 130px;
+  gap: 1px; background: var(--border); z-index: 1;
+}
+
+/* ─── HEADER ─── */
+#header {
+  grid-column: 1/-1; background: var(--panel);
+  display: flex; align-items: center; justify-content: space-between; padding: 0 20px;
+}
+.logo { font-family:'Orbitron',sans-serif; font-size:16px; font-weight:900; letter-spacing:6px; color:var(--cyan); text-shadow:0 0 18px var(--cyan); }
+.logo span { color: var(--orange); }
+.hstatus { display:flex; gap:20px; font-size:10px; letter-spacing:2px; color:var(--text-dim); font-weight:600; }
+.sdot { display:inline-block; width:5px; height:5px; border-radius:50%; background:var(--cyan); box-shadow:0 0 6px var(--cyan); animation:pulse 2s infinite; margin-right:5px; }
+.htime { font-family:'Orbitron',sans-serif; font-size:12px; color:var(--cyan); letter-spacing:3px; }
+
+/* ─── LEFT PANEL ─── */
+#left-panel { background:var(--panel); padding:14px; display:flex; flex-direction:column; gap:10px; overflow-y:auto; }
+.plabel { font-family:'Orbitron',sans-serif; font-size:8px; letter-spacing:3px; color:var(--text-dim); padding-bottom:5px; border-bottom:1px solid var(--border); margin-bottom:2px; }
+.stat-bar { margin-bottom:8px; }
+.stat-h { display:flex; justify-content:space-between; font-size:10px; letter-spacing:1px; margin-bottom:3px; color:var(--text-dim); }
+.sval { color:var(--cyan); font-weight:600; }
+.btrack { height:2px; background:rgba(0,200,255,0.08); border-radius:2px; overflow:hidden; }
+.bfill { height:100%; background:linear-gradient(90deg,var(--cyan-dim),var(--cyan)); border-radius:2px; transition:width 1.2s ease; box-shadow:0 0 5px var(--cyan); }
+.info-card { background:var(--panel2); border:1px solid var(--border); padding:10px; }
+.icard-t { font-family:'Orbitron',sans-serif; font-size:8px; letter-spacing:2px; color:var(--text-dim); margin-bottom:6px; }
+.ival { font-size:20px; font-weight:700; color:var(--cyan); font-family:'Orbitron',sans-serif; line-height:1; }
+.isub { color:var(--text-dim); font-size:10px; margin-top:3px; }
+
+/* ─── CENTER ─── */
+#center {
+  background: #000810;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  position: relative; overflow: hidden;
+}
+#galaxy-canvas { position:absolute; inset:0; width:100%; height:100%; }
+
+/* Voice response bubble under planet */
+#voice-response {
+  position: absolute;
+  bottom: 18px;
+  left: 50%; transform: translateX(-50%);
+  width: 80%; max-width: 480px;
+  text-align: center;
+  font-family: 'Orbitron', sans-serif;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  color: var(--cyan);
+  text-shadow: 0 0 12px var(--cyan);
+  background: rgba(0,8,16,0.7);
+  border: 1px solid var(--border);
+  padding: 10px 14px;
+  opacity: 0;
+  transition: opacity 0.4s;
+  pointer-events: none;
+  z-index: 10;
+  line-height: 1.6;
+}
+#voice-response.visible { opacity: 1; }
+
+/* Status */
+#arc-status {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  font-family: 'Orbitron', sans-serif;
+  font-size: 9px; letter-spacing: 3px;
+  color: rgba(0,200,255,0.6);
+  text-align: center;
+  pointer-events: none;
+  z-index: 10;
+  text-shadow: 0 0 10px var(--cyan);
+}
+
+/* Listen waves */
+#listen-waves {
+  position: absolute;
+  bottom: 60px; left: 50%; transform: translateX(-50%);
+  display: none; align-items: center; gap: 3px; height: 24px; z-index: 10;
+}
+#listen-waves.active { display: flex; }
+.wbar { width: 3px; background: var(--cyan); border-radius: 2px; box-shadow: 0 0 5px var(--cyan); animation: wave 0.9s ease-in-out infinite; }
+.wbar:nth-child(1){height:6px;animation-delay:0s}
+.wbar:nth-child(2){height:12px;animation-delay:.1s}
+.wbar:nth-child(3){height:18px;animation-delay:.2s}
+.wbar:nth-child(4){height:12px;animation-delay:.3s}
+.wbar:nth-child(5){height:6px;animation-delay:.4s}
+
+/* Corner deco */
+#center::before, #center::after { content:''; position:absolute; width:36px; height:36px; border-style:solid; border-color:rgba(0,200,255,0.2); z-index:5; }
+#center::before { top:12px; left:12px; border-width:1px 0 0 1px; }
+#center::after { bottom:12px; right:12px; border-width:0 1px 1px 0; }
+
+/* ─── RIGHT PANEL ─── */
+#right-panel { background:var(--panel); padding:14px; display:flex; flex-direction:column; gap:10px; overflow-y:auto; }
+#activity-log { flex:1; overflow-y:auto; }
+.log-entry { font-size:10px; padding:4px 0; border-bottom:1px solid rgba(0,200,255,0.05); color:var(--text-dim); line-height:1.4; }
+.ltime { color:var(--cyan-dim); font-family:'Orbitron',sans-serif; font-size:8px; margin-right:5px; }
+
+/* ─── BOTTOM ─── */
+#bottom { grid-column:1/-1; background:var(--panel); display:flex; flex-direction:column; border-top:1px solid var(--border); }
+#chat-output { flex:1; padding:8px 20px; overflow-y:auto; display:flex; flex-direction:column; gap:4px; }
+.msg { font-size:12px; letter-spacing:.5px; line-height:1.5; animation:fadeIn .3s ease; }
+.msg.user { color:var(--text-dim); }
+.msg.user::before { content:'› '; color:var(--orange); font-weight:700; }
+.msg.ai { color:var(--cyan); }
+.msg.ai::before { content:'A.R.C. '; font-family:'Orbitron',sans-serif; font-size:9px; font-weight:700; margin-right:4px; }
+
+/* Input row */
+#input-row { display:flex; align-items:center; gap:0; border-top:1px solid var(--border); padding:0 0 0 20px; }
+#mode-label { font-family:'Orbitron',sans-serif; font-size:8px; letter-spacing:2px; color:var(--text-dim); white-space:nowrap; margin-right:14px; }
+#text-input { flex:1; background:transparent; border:none; outline:none; color:var(--text); font-family:'Rajdhani',sans-serif; font-size:14px; font-weight:500; letter-spacing:1px; padding:12px 0; caret-color:var(--cyan); display:none; }
+#text-input::placeholder { color:var(--text-dim); }
+.ibtn { background:transparent; border:none; border-left:1px solid var(--border); color:var(--text-dim); font-family:'Orbitron',sans-serif; font-size:9px; letter-spacing:1px; padding:0 16px; height:46px; cursor:pointer; transition:all .2s; white-space:nowrap; }
+.ibtn:hover { color:var(--cyan); background:var(--cyan-glow); }
+.ibtn.on { color:var(--orange); border-left-color:rgba(255,107,0,0.4); background:var(--orange-glow); }
+#send-btn { display:none; }
+
+/* ─── FLOATING PANELS ─── */
+.fpanel {
+  position: fixed; z-index: 1000;
+  background: rgba(0,10,22,0.97);
+  border: 1px solid var(--border);
+  box-shadow: 0 0 30px rgba(0,200,255,0.1);
+  min-width: 320px;
+  animation: fadeIn .3s ease;
+  display: none;
+}
+.fpanel.open { display: block; }
+.fpanel-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; border-bottom: 1px solid var(--border);
+  font-family: 'Orbitron', sans-serif; font-size: 9px; letter-spacing: 2px; color: var(--cyan);
+  cursor: move;
+}
+.fpanel-close { background:none; border:none; color:var(--text-dim); cursor:pointer; font-size:14px; padding:0 2px; }
+.fpanel-close:hover { color:var(--orange); }
+.fpanel-body { padding: 14px; }
+
+/* Map */
+#map-panel { top: 80px; left: 50%; transform: translateX(-50%); width: 420px; }
+#map-container { width: 100%; height: 240px; }
+
+/* Weather */
+#weather-panel { top: 80px; right: 240px; width: 300px; }
+.wx-main { display:flex; align-items:center; gap:12px; margin-bottom:12px; }
+.wx-icon { font-size:42px; }
+.wx-temp { font-family:'Orbitron',sans-serif; font-size:32px; color:var(--cyan); font-weight:700; }
+.wx-desc { color:var(--text-dim); font-size:12px; letter-spacing:1px; margin-top:2px; }
+.wx-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.wx-item { background:var(--panel2); padding:8px; text-align:center; }
+.wx-item-label { font-size:9px; color:var(--text-dim); letter-spacing:1px; font-family:'Orbitron',sans-serif; }
+.wx-item-val { font-size:14px; color:var(--text); font-weight:600; margin-top:3px; }
+.wx-forecast { margin-top:10px; display:flex; gap:6px; }
+.wx-day { flex:1; background:var(--panel2); padding:6px 4px; text-align:center; font-size:10px; }
+.wx-day-name { color:var(--text-dim); font-family:'Orbitron',sans-serif; font-size:7px; letter-spacing:1px; }
+.wx-day-icon { font-size:16px; margin:3px 0; }
+.wx-day-temp { color:var(--cyan); font-weight:600; }
+
+/* ─── ANIMATIONS ─── */
+@keyframes pulse { 0%,100%{opacity:1}50%{opacity:.3} }
+@keyframes wave { 0%,100%{transform:scaleY(.4)}50%{transform:scaleY(1.4)} }
+@keyframes fadeIn { from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)} }
+@keyframes blink { 50%{opacity:0} }
+.typing::after { content:'▌'; animation:blink .7s infinite; }
+
+::-webkit-scrollbar { width:3px; }
+::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- HEADER -->
+<header id="header">
+  <div class="logo">A<span>.</span>R<span>.</span>C<span>.</span></div>
+  <div class="hstatus">
+    <span><span class="sdot"></span>SYSTÈME EN LIGNE</span>
+    <span>v5.0.0</span>
+    <span id="mode-badge">MODE VOCAL</span>
+  </div>
+  <div class="htime" id="clock">--:--:--</div>
+</header>
+
+<!-- LEFT -->
+<aside id="left-panel">
+  <div class="plabel">RESSOURCES</div>
+  <div class="stat-bar"><div class="stat-h"><span>PROCESSEUR</span><span class="sval" id="cpu-v">--</span></div><div class="btrack"><div class="bfill" id="cpu-b" style="width:0"></div></div></div>
+  <div class="stat-bar"><div class="stat-h"><span>MÉMOIRE</span><span class="sval" id="mem-v">--</span></div><div class="btrack"><div class="bfill" id="mem-b" style="width:0"></div></div></div>
+  <div class="stat-bar"><div class="stat-h"><span>RÉSEAU</span><span class="sval" id="net-v">--</span></div><div class="btrack"><div class="bfill" id="net-b" style="width:0"></div></div></div>
+  <div class="plabel" style="margin-top:6px">SESSION</div>
+  <div class="info-card"><div class="icard-t">DURÉE</div><div class="ival" id="sess-t">00:00</div></div>
+  <div class="info-card"><div class="icard-t">REQUÊTES</div><div class="ival" id="req-c">0</div></div>
+  <div class="info-card"><div class="icard-t">DATE</div><div class="ival" id="date-d" style="font-size:10px;line-height:1.5">--</div></div>
+</aside>
+
+<!-- CENTER (Three.js canvas) -->
+<main id="center">
+  <canvas id="galaxy-canvas"></canvas>
+  <div id="arc-status">EN VEILLE</div>
+  <div id="listen-waves">
+    <div class="wbar"></div><div class="wbar"></div><div class="wbar"></div><div class="wbar"></div><div class="wbar"></div>
+  </div>
+  <div id="voice-response"></div>
+</main>
+
+<!-- RIGHT -->
+<aside id="right-panel">
+  <div class="plabel">JOURNAL</div>
+  <div id="activity-log"></div>
+</aside>
+
+<!-- BOTTOM -->
+<div id="bottom">
+  <div id="chat-output"></div>
+  <div id="input-row">
+    <div id="mode-label">🎤 MODE VOCAL</div>
+    <input type="text" id="text-input" placeholder="Entrez une commande…" autocomplete="off"/>
+    <button class="ibtn on" id="mode-btn" onclick="toggleMode()">⌨ TEXTE</button>
+    <button class="ibtn" id="send-btn" onclick="sendText()">ENVOYER</button>
+  </div>
+</div>
+
+<!-- MAP PANEL -->
+<div class="fpanel" id="map-panel">
+  <div class="fpanel-header" id="map-drag-handle">
+    <span>📍 LOCALISATION</span>
+    <button class="fpanel-close" onclick="closePanel('map-panel')">✕</button>
+  </div>
+  <div class="fpanel-body" style="padding:0">
+    <div id="map-container"></div>
+    <div style="padding:10px;font-size:11px;color:var(--text-dim)" id="map-addr">Localisation en cours…</div>
+  </div>
+</div>
+
+<!-- WEATHER PANEL -->
+<div class="fpanel" id="weather-panel">
+  <div class="fpanel-header" id="wx-drag-handle">
+    <span>🌍 MÉTÉO LOCALE</span>
+    <button class="fpanel-close" onclick="closePanel('weather-panel')">✕</button>
+  </div>
+  <div class="fpanel-body" id="wx-body">
+    <div style="color:var(--text-dim);font-size:11px">Chargement des données…</div>
+  </div>
+</div>
+
+</div><!-- end #app -->
+
+<script>
+// ══════════════════════════════════════════════
+// THREE.JS — GALACTIC PLANET SCENE
+// ══════════════════════════════════════════════
+(function() {
+  const canvas = document.getElementById('galaxy-canvas');
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setClearColor(0x000000, 0);
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 1000);
+  camera.position.set(0, 1.8, 5.5);
+  camera.lookAt(0, 0, 0);
+
+  // Resize
+  function resize() {
+    const el = canvas.parentElement;
+    const w = el.clientWidth, h = el.clientHeight;
+    renderer.setSize(w, h);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  // ── Stars ──
+  const starGeo = new THREE.BufferGeometry();
+  const starCount = 2000;
+  const starPos = new Float32Array(starCount * 3);
+  for (let i = 0; i < starCount * 3; i++) starPos[i] = (Math.random() - 0.5) * 100;
+  starGeo.setAttribute('position', new THREE.BufferAttribute(starPos, 3));
+  const starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.06, transparent: true, opacity: 0.7 });
+  scene.add(new THREE.Points(starGeo, starMat));
+
+  // Colored nebula stars
+  const nebulaGeo = new THREE.BufferGeometry();
+  const nebCount = 400;
+  const nebPos = new Float32Array(nebCount * 3);
+  const nebCol = new Float32Array(nebCount * 3);
+  for (let i = 0; i < nebCount; i++) {
+    nebPos[i*3] = (Math.random()-0.5)*60;
+    nebPos[i*3+1] = (Math.random()-0.5)*60;
+    nebPos[i*3+2] = (Math.random()-0.5)*60;
+    const c = [0,0.2,1]; // blue tint
+    nebCol[i*3] = c[0]+Math.random()*0.3; nebCol[i*3+1] = c[1]+Math.random()*0.5; nebCol[i*3+2] = c[2];
+  }
+  nebulaGeo.setAttribute('position', new THREE.BufferAttribute(nebPos, 3));
+  nebulaGeo.setAttribute('color', new THREE.BufferAttribute(nebCol, 3));
+  const nebMat = new THREE.PointsMaterial({ size: 0.1, vertexColors: true, transparent: true, opacity: 0.5 });
+  scene.add(new THREE.Points(nebulaGeo, nebMat));
+
+  // ── Planet ──
+  function makePlanetTexture() {
+    const c = document.createElement('canvas'); c.width = 512; c.height = 256;
+    const ctx = c.getContext('2d');
+    // Base gradient (deep ocean blue/teal)
+    const g = ctx.createLinearGradient(0,0,512,256);
+    g.addColorStop(0,'#0A1A3A'); g.addColorStop(.3,'#0D2B4E'); g.addColorStop(.6,'#091F38'); g.addColorStop(1,'#0A1A3A');
+    ctx.fillStyle = g; ctx.fillRect(0,0,512,256);
+    // Continent patches
+    ctx.fillStyle = 'rgba(20,60,30,0.7)';
+    [[60,80,80,60],[200,50,120,80],[320,100,90,50],[100,160,70,40],[380,150,100,60]].forEach(([x,y,w,h])=>{
+      ctx.beginPath(); ctx.ellipse(x,y,w,h,Math.random(),0,Math.PI*2); ctx.fill();
+    });
+    // Cloud wisps
+    ctx.fillStyle = 'rgba(180,220,255,0.15)';
+    for(let i=0;i<12;i++){
+      ctx.beginPath(); ctx.ellipse(Math.random()*512,Math.random()*256,Math.random()*80+20,Math.random()*20+5,Math.random(),0,Math.PI*2); ctx.fill();
+    }
+    // Glow spots (cities/lights)
+    ctx.fillStyle = 'rgba(100,200,255,0.3)';
+    for(let i=0;i<8;i++){
+      ctx.beginPath(); ctx.arc(Math.random()*512,Math.random()*256,Math.random()*4+1,0,Math.PI*2); ctx.fill();
+    }
+    return new THREE.CanvasTexture(c);
+  }
+
+  const planet = new THREE.Mesh(
+    new THREE.SphereGeometry(1, 64, 64),
+    new THREE.MeshPhongMaterial({ map: makePlanetTexture(), shininess: 40, specular: new THREE.Color(0x224466) })
+  );
+  scene.add(planet);
+
+  // Atmosphere glow
+  const atmMat = new THREE.MeshPhongMaterial({
+    color: 0x0044AA, transparent: true, opacity: 0.18, side: THREE.FrontSide
+  });
+  const atm = new THREE.Mesh(new THREE.SphereGeometry(1.06, 64, 64), atmMat);
+  scene.add(atm);
+
+  // ── Asteroid Rings ──
+  function makeAsteroidRing(innerR, outerR, count, tilt, color, speed) {
+    const group = new THREE.Group();
+    group.rotation.x = tilt;
+
+    // Particle belt
+    const geo = new THREE.BufferGeometry();
+    const pos = new Float32Array(count * 3);
+    const sizes = new Float32Array(count);
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2 + Math.random() * 0.3;
+      const r = innerR + Math.random() * (outerR - innerR);
+      const y = (Math.random() - 0.5) * 0.06;
+      pos[i*3] = Math.cos(angle) * r;
+      pos[i*3+1] = y;
+      pos[i*3+2] = Math.sin(angle) * r;
+      sizes[i] = Math.random() * 0.04 + 0.01;
+    }
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+    const mat = new THREE.PointsMaterial({ color, size: 0.025, transparent: true, opacity: 0.85 });
+    const belt = new THREE.Points(geo, mat);
+    group.add(belt);
+    group.userData = { speed };
+    return group;
+  }
+
+  const ring1 = makeAsteroidRing(1.55, 1.9, 1800, Math.PI * 0.18, 0x66BBDD, 0.0015);
+  const ring2 = makeAsteroidRing(2.1, 2.5, 1200, Math.PI * 0.12, 0x9955FF, -0.001);
+  const ring3 = makeAsteroidRing(2.8, 3.2, 800, Math.PI * 0.25, 0xFFAA33, 0.0008);
+  scene.add(ring1, ring2, ring3);
+
+  // ── Moon ──
+  const moon = new THREE.Mesh(
+    new THREE.SphereGeometry(0.18, 32, 32),
+    new THREE.MeshPhongMaterial({ color: 0x778899, shininess: 10 })
+  );
+  const moonPivot = new THREE.Group();
+  moonPivot.add(moon);
+  moon.position.set(1.9, 0.1, 0);
+  moonPivot.rotation.x = 0.3;
+  scene.add(moonPivot);
+
+  // ── Lights ──
+  scene.add(new THREE.AmbientLight(0x112244, 1.2));
+  const sun = new THREE.DirectionalLight(0x88CCFF, 2.5);
+  sun.position.set(5, 3, 5);
+  scene.add(sun);
+  const rimLight = new THREE.DirectionalLight(0x4400FF, 0.8);
+  rimLight.position.set(-5, 1, -3);
+  scene.add(rimLight);
+
+  // ── Animate ──
+  function animate() {
+    requestAnimationFrame(animate);
+    planet.rotation.y += 0.002;
+    atm.rotation.y += 0.0015;
+    ring1.rotation.y += ring1.userData.speed;
+    ring2.rotation.y += ring2.userData.speed;
+    ring3.rotation.y += ring3.userData.speed;
+    moonPivot.rotation.y += 0.005;
+    renderer.render(scene, camera);
+  }
+  animate();
+})();
+
+// ══════════════════════════════════════════════
+// DRAGGABLE PANELS
+// ══════════════════════════════════════════════
+function makeDraggable(handleId, panelId) {
+  const handle = document.getElementById(handleId);
+  const panel = document.getElementById(panelId);
+  let ox=0,oy=0,mx=0,my=0;
+  handle.onmousedown = e => {
+    e.preventDefault();
+    mx=e.clientX; my=e.clientY;
+    document.onmousemove = e2 => {
+      ox=mx-e2.clientX; oy=my-e2.clientY; mx=e2.clientX; my=e2.clientY;
+      panel.style.top=(panel.offsetTop-oy)+'px';
+      panel.style.left=(panel.offsetLeft-ox)+'px';
+      panel.style.transform='none';
+    };
+    document.onmouseup = () => { document.onmousemove=null; document.onmouseup=null; };
+  };
+}
+makeDraggable('map-drag-handle','map-panel');
+makeDraggable('wx-drag-handle','weather-panel');
+
+function closePanel(id) { document.getElementById(id).classList.remove('open'); }
+
+// ══════════════════════════════════════════════
+// CLOCK / STATS / LOG
+// ══════════════════════════════════════════════
+let sessionStart = Date.now(), reqCount = 0;
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent = now.toLocaleTimeString('fr-FR');
+  document.getElementById('date-d').textContent = now.toLocaleDateString('fr-FR', { weekday:'long', day:'numeric', month:'long' });
+  const e = Math.floor((Date.now()-sessionStart)/1000);
+  document.getElementById('sess-t').textContent = String(Math.floor(e/60)).padStart(2,'0')+':'+String(e%60).padStart(2,'0');
+}
+setInterval(updateClock, 1000); updateClock();
+
+function updateStats() {
+  [{id:'cpu',mn:12,mx:70},{id:'mem',mn:38,mx:78},{id:'net',mn:5,mx:88}].forEach(v=>{
+    const p=Math.floor(Math.random()*(v.mx-v.mn)+v.mn);
+    document.getElementById(v.id+'-v').textContent=p+'%';
+    document.getElementById(v.id+'-b').style.width=p+'%';
+  });
+}
+updateStats(); setInterval(updateStats, 3000);
+
+function addLog(text) {
+  const log = document.getElementById('activity-log');
+  const div = document.createElement('div'); div.className='log-entry';
+  const t = new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+  div.innerHTML=`<span class="ltime">${t}</span>${text}`;
+  log.prepend(div);
+  if(log.children.length>25) log.lastChild.remove();
+}
+
+// ══════════════════════════════════════════════
+// MESSAGES & STATUS
+// ══════════════════════════════════════════════
+const output = document.getElementById('chat-output');
+function addMsg(role, text) {
+  const d=document.createElement('div'); d.className=`msg ${role}`; d.textContent=text;
+  output.appendChild(d); output.scrollTop=output.scrollHeight; return d;
+}
+function setStatus(t) { document.getElementById('arc-status').textContent=t; }
+
+// Voice response display under planet
+let vrTimer=null;
+function showVoiceResponse(text) {
+  const vr=document.getElementById('voice-response');
+  vr.textContent=text; vr.classList.add('visible');
+  clearTimeout(vrTimer);
+  vrTimer=setTimeout(()=>vr.classList.remove('visible'), Math.max(4000, text.length*60));
+}
+
+// ══════════════════════════════════════════════
+// SPEECH SYNTHESIS (TTS)
+// ══════════════════════════════════════════════
+function speak(text) {
+  if(!('speechSynthesis' in window)) return;
+  window.speechSynthesis.cancel();
+  const utt = new SpeechSynthesisUtterance(text);
+  utt.lang='fr-FR'; utt.rate=1.05; utt.pitch=0.9;
+  // Try to find a French voice
+  const voices=window.speechSynthesis.getVoices();
+  const frVoice=voices.find(v=>v.lang.startsWith('fr'));
+  if(frVoice) utt.voice=frVoice;
+  window.speechSynthesis.speak(utt);
+}
+
+// ══════════════════════════════════════════════
+// MODE : VOCAL ↔ TEXTE
+// ══════════════════════════════════════════════
+let isVoiceMode = true;
+let isListening = false;
+let recognition = null;
+let continueListening = true; // continuous voice loop
+
+function toggleMode() {
+  isVoiceMode = !isVoiceMode;
+  const btn = document.getElementById('mode-btn');
+  const input = document.getElementById('text-input');
+  const sendBtn = document.getElementById('send-btn');
+  const lbl = document.getElementById('mode-label');
+  const badge = document.getElementById('mode-badge');
+
+  if (isVoiceMode) {
+    btn.textContent = '⌨ TEXTE';
+    btn.classList.add('on');
+    input.style.display = 'none';
+    sendBtn.style.display = 'none';
+    lbl.textContent = '🎤 MODE VOCAL';
+    badge.textContent = 'MODE VOCAL';
+    continueListening = true;
+    startListening();
+  } else {
+    btn.textContent = '🎤 VOCAL';
+    btn.classList.remove('on');
+    input.style.display = 'block';
+    sendBtn.style.display = 'block';
+    lbl.textContent = '⌨ MODE TEXTE';
+    badge.textContent = 'MODE TEXTE';
+    continueListening = false;
+    stopListening();
+    setTimeout(()=>document.getElementById('text-input').focus(), 50);
+  }
+}
+
+function startListening() {
+  if(!('webkitSpeechRecognition' in window||'SpeechRecognition' in window)) {
+    addMsg('ai','Module vocal non supporté. Utilisez Chrome, Monsieur.'); return;
+  }
+  if(isListening) return;
+  const SR = window.SpeechRecognition||window.webkitSpeechRecognition;
+  recognition = new SR();
+  recognition.lang='fr-FR'; recognition.continuous=false; recognition.interimResults=false;
+  recognition.onstart=()=>{ isListening=true; document.getElementById('listen-waves').classList.add('active'); setStatus('ÉCOUTE…'); };
+  recognition.onresult=e=>{ const t=e.results[0][0].transcript; stopListening(); runCommand(t, true); };
+  recognition.onerror=()=>{ stopListening(); };
+  recognition.onend=()=>{ stopListening(); if(continueListening&&isVoiceMode) setTimeout(startListening,800); };
+  recognition.start();
+}
+
+function stopListening() {
+  isListening=false;
+  document.getElementById('listen-waves').classList.remove('active');
+  try{recognition&&recognition.stop();}catch(e){}
+  if(!document.getElementById('listen-waves').classList.contains('active')) setStatus('EN VEILLE');
+}
+
+// ══════════════════════════════════════════════
+// GEOLOCATION + MAP
+// ══════════════════════════════════════════════
+let userLat=null, userLon=null, mapInstance=null;
+
+async function geolocate(showMap=true, showWeather=false) {
+  setStatus('LOCALISATION…');
+  return new Promise((resolve)=>{
+    if(!navigator.geolocation){ addMsg('ai','Géolocalisation non disponible dans ce navigateur.'); resolve(null); return; }
+    navigator.geolocation.getCurrentPosition(async pos=>{
+      userLat=pos.coords.latitude; userLon=pos.coords.longitude;
+      // Reverse geocode
+      let addr='Coordonnées obtenues';
+      try {
+        const r=await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${userLat}&lon=${userLon}&format=json`);
+        const d=await r.json();
+        addr=d.display_name||addr;
+        document.getElementById('map-addr').textContent='📍 '+addr.split(',').slice(0,3).join(', ');
+      } catch(e){}
+      if(showMap) openMap();
+      if(showWeather) fetchWeather();
+      setStatus('EN VEILLE');
+      resolve({lat:userLat,lon:userLon,addr});
+    }, err=>{
+      addMsg('ai','Impossible d\'obtenir votre position. Vérifiez les autorisations.');
+      setStatus('EN VEILLE'); resolve(null);
+    });
+  });
+}
+
+function openMap() {
+  const panel=document.getElementById('map-panel'); panel.classList.add('open');
+  if(!mapInstance) {
+    mapInstance=L.map('map-container').setView([userLat||48.85,userLon||2.35],13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OSM'}).addTo(mapInstance);
+  } else { mapInstance.setView([userLat,userLon],13); mapInstance.eachLayer(l=>{ if(l instanceof L.Marker) mapInstance.removeLayer(l); }); }
+  if(userLat) L.marker([userLat,userLon]).addTo(mapInstance).bindPopup('Vous êtes ici').openPopup();
+  setTimeout(()=>mapInstance.invalidateSize(),200);
+}
+
+// ══════════════════════════════════════════════
+// WEATHER (Open-Meteo, free, no key)
+// ══════════════════════════════════════════════
+const WX_CODES = {
+  0:'Ciel dégagé ☀️',1:'Peu nuageux 🌤',2:'Partiellement nuageux ⛅',3:'Couvert ☁️',
+  45:'Brouillard 🌫',48:'Brouillard givrant 🌫',
+  51:'Bruine légère 🌦',53:'Bruine modérée 🌦',55:'Bruine dense 🌧',
+  61:'Pluie faible 🌧',63:'Pluie modérée 🌧',65:'Pluie forte 🌧',
+  71:'Neige légère 🌨',73:'Neige modérée ❄️',75:'Neige forte ❄️',
+  80:'Averses légères 🌦',81:'Averses modérées 🌧',82:'Averses violentes ⛈',
+  95:'Orage ⛈',96:'Orage avec grêle ⛈',99:'Orage violent ⛈',
+};
+const WX_ICONS = {
+  0:'☀️',1:'🌤',2:'⛅',3:'☁️',45:'🌫',48:'🌫',51:'🌦',53:'🌦',55:'🌧',
+  61:'🌧',63:'🌧',65:'🌧',71:'🌨',73:'❄️',75:'❄️',80:'🌦',81:'🌧',82:'⛈',95:'⛈',96:'⛈',99:'⛈'
+};
+
+async function fetchWeather(fromGeo=false) {
+  if(!userLat) { await geolocate(false, false); if(!userLat){ addMsg('ai','Impossible d\'obtenir la météo sans localisation.'); return; } }
+  setStatus('DONNÉES MÉTÉO…');
+  try {
+    const url=`https://api.open-meteo.com/v1/forecast?latitude=${userLat}&longitude=${userLon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code,apparent_temperature&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=5`;
+    const res=await fetch(url); const d=await res.json();
+    const cur=d.current; const daily=d.daily;
+    const code=cur.weather_code;
+    const desc=WX_CODES[code]||'Conditions inconnues';
+    const icon=WX_ICONS[code]||'🌍';
+
+    const days=['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+    let forecastHTML='';
+    for(let i=0;i<5;i++){
+      const dayName=days[new Date(daily.time[i]).getDay()];
+      const dIcon=WX_ICONS[daily.weather_code[i]]||'🌡';
+      forecastHTML+=`<div class="wx-day"><div class="wx-day-name">${dayName}</div><div class="wx-day-icon">${dIcon}</div><div class="wx-day-temp">${Math.round(daily.temperature_2m_max[i])}°</div></div>`;
+    }
+
+    document.getElementById('wx-body').innerHTML=`
+      <div class="wx-main">
+        <div class="wx-icon">${icon}</div>
+        <div><div class="wx-temp">${Math.round(cur.temperature_2m)}°C</div><div class="wx-desc">${desc}</div></div>
+      </div>
+      <div class="wx-grid">
+        <div class="wx-item"><div class="wx-item-label">RESSENTI</div><div class="wx-item-val">${Math.round(cur.apparent_temperature)}°C</div></div>
+        <div class="wx-item"><div class="wx-item-label">HUMIDITÉ</div><div class="wx-item-val">${cur.relative_humidity_2m}%</div></div>
+        <div class="wx-item"><div class="wx-item-label">VENT</div><div class="wx-item-val">${Math.round(cur.wind_speed_10m)} km/h</div></div>
+        <div class="wx-item"><div class="wx-item-label">MIN/MAX</div><div class="wx-item-val">${Math.round(daily.temperature_2m_min[0])}° / ${Math.round(daily.temperature_2m_max[0])}°</div></div>
+      </div>
+      <div class="wx-forecast">${forecastHTML}</div>`;
+    document.getElementById('weather-panel').classList.add('open');
+    setStatus('EN VEILLE');
+    return `Température actuelle : ${Math.round(cur.temperature_2m)}°C, ${desc}. Vent à ${Math.round(cur.wind_speed_10m)} km/h.`;
+  } catch(e){
+    setStatus('EN VEILLE');
+    addMsg('ai','Impossible de récupérer la météo. Vérifiez votre connexion.');
+    return null;
+  }
+}
+
+// ══════════════════════════════════════════════
+// COMMANDS ENGINE
+// ══════════════════════════════════════════════
+const JOKES=[
+  "Pourquoi les plongeurs plongent-ils toujours en arrière ? Parce que sinon ils tomberaient dans le bateau.",
+  "Un homme entre dans une bibliothèque. Il demande un livre sur le paradoxe. La bibliothécaire répond : il est là, mais il n'existe pas.",
+  "Comment appelle-t-on un chat tombé dans un pot de peinture ? Un chat-peint.",
+  "Qu'est-ce qu'un canif ? Un petit fien.",
+];
+const CITATIONS=[
+  "Toute technologie suffisamment avancée est indistinguable de la magie. – Arthur C. Clarke",
+  "Le futur appartient à ceux qui croient en la beauté de leurs rêves. – Eleanor Roosevelt",
+  "L'intelligence, c'est la capacité de s'adapter aux changements. – Stephen Hawking",
+  "La science sans conscience n'est que ruine de l'âme. – François Rabelais",
+];
+
+async function processCommand(raw) {
+  const i=raw.toLowerCase().trim();
+  reqCount++; document.getElementById('req-c').textContent=reqCount;
+
+  // Switch to text mode
+  if(i.match(/passage texte|mode texte|passe en texte|texte mode/)) {
+    if(isVoiceMode) toggleMode();
+    return "Passage en mode texte effectué, Monsieur.";
+  }
+  // Switch to voice mode
+  if(i.match(/passage vocal|mode vocal|passe en vocal|retour vocal/)) {
+    if(!isVoiceMode) toggleMode();
+    return "Mode vocal réactivé, Monsieur.";
+  }
+
+  // Heure / date
+  if(i.match(/quelle heure|heure est.il|donne.moi l'heure|date|quel jour|aujourd'hui/)) {
+    const n=new Date();
+    return `Il est ${n.toLocaleTimeString('fr-FR')} le ${n.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}.`;
+  }
+
+  // Localisation / carte / position
+  if(i.match(/où suis.je|localise.moi|ma position|affiche.la.carte|montre.la.carte|carte|ma localisation/)) {
+    const geo=await geolocate(true,false);
+    if(geo) return `Localisation obtenue. Vous semblez être aux coordonnées ${geo.lat.toFixed(4)}N, ${geo.lon.toFixed(4)}E. La carte est affichée.`;
+    return null;
+  }
+
+  // Météo
+  if(i.match(/météo|meteo|quel temps|température|température actuelle|temps qu'il fait|prévision/)) {
+    if(!userLat) await geolocate(false,false);
+    const result=await fetchWeather();
+    return result||"Données météo indisponibles.";
+  }
+
+  // Calcul
+  const calcMatch=i.match(/calcul[a-z]*\s+([\d\s\+\-\*\/\.\(\)]+)|combien fait\s+([\d\s\+\-\*\/\.\(\)]+)/);
+  if(calcMatch){
+    try{
+      const expr=(calcMatch[1]||calcMatch[2]).trim();
+      const r=Function('"use strict";return ('+expr+')')();
+      if(!isNaN(r)) return `Le résultat de ${expr} est ${r}.`;
+    }catch(e){}
+  }
+  // Standalone math
+  if(i.match(/^[\d\s\+\-\*\/\.\(\)]+$/)&&i.match(/[\+\-\*\/]/)){
+    try{ const r=Function('"use strict";return ('+i+')')(); if(!isNaN(r)) return `Résultat : ${r}.`; }catch(e){}
+  }
+
+  // Blague
+  if(i.match(/blague|rigol|fais.moi rire|raconte.moi une blague|drôle/)) return JOKES[Math.floor(Math.random()*JOKES.length)];
+
+  // Citation
+  if(i.match(/citation|inspire.moi|motiv|une citation/)) return CITATIONS[Math.floor(Math.random()*CITATIONS.length)];
+
+  // Aide
+  if(i.match(/aide|help|commande|que sais.tu|que peux.tu|tes capacités/))
+    return "Je peux : donner l'heure et la date, afficher votre localisation sur une carte, fournir la météo en temps réel, effectuer des calculs, raconter des blagues, citer des auteurs, et répondre à vos questions générales grâce à mon intelligence centrale.";
+
+  // Bonjour
+  if(i.match(/bonjour|salut|hello|bonsoir|coucou|hey/))
+    return ['Bonjour, Monsieur. Tous les systèmes sont opérationnels.','Bonsoir. Que puis-je faire pour vous ?','Salut ! A.R.C. à votre service.'][Math.floor(Math.random()*3)];
+
+  // Merci
+  if(i.match(/merci|parfait|bravo|bien joué/)) return "Je fais simplement mon travail, Monsieur.";
+
+  // Qui es-tu
+  if(i.match(/qui es.tu|présente.toi|tu es qui|c'est quoi a\.r\.c/))
+    return "Je suis A.R.C., Adaptive Response Core. Une intelligence artificielle avancée conçue pour vous assister en toutes circonstances, Monsieur.";
+
+  return null; // → Claude API
+}
+
+// ══════════════════════════════════════════════
+// API CLAUDE
+// ══════════════════════════════════════════════
+async function callAI(text, voiceMode) {
+  const m=addMsg('ai',''); m.classList.add('typing');
+  setStatus('TRAITEMENT…');
+  try {
+    const res=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:'claude-sonnet-4-6', max_tokens:1000,
+        system:"Tu es A.R.C. (Adaptive Response Core), une IA style J.A.R.V.I.S. des films Iron Man. Réponds en français, de manière concise (2-3 phrases max pour le vocal), élégante et légèrement formelle. Sois légèrement sarcastique parfois. Appelle l'utilisateur 'Monsieur'. Ne mentionne jamais que tu es Claude ou fait par Anthropic.",
+        messages:[{role:'user',content:text}]
+      })
+    });
+    const d=await res.json(); m.classList.remove('typing');
+    if(d.content&&d.content[0]){
+      const reply=d.content[0].text; m.textContent=reply;
+      if(voiceMode){ speak(reply); showVoiceResponse(reply); }
+    } else { m.textContent="Erreur de communication avec le noyau central."; }
+  } catch(e){ m.classList.remove('typing'); m.textContent="Connexion interrompue, Monsieur."; }
+  setStatus('EN VEILLE');
+}
+
+// ══════════════════════════════════════════════
+// MAIN HANDLER
+// ══════════════════════════════════════════════
+async function runCommand(text, voiceMode=false) {
+  if(!text.trim()) return;
+  addMsg('user', text);
+  addLog(text.substring(0,42)+(text.length>42?'…':''));
+  setStatus('ANALYSE…');
+  const result=await processCommand(text);
+  if(result!==null){
+    setTimeout(()=>{
+      addMsg('ai',result);
+      if(voiceMode){ speak(result); showVoiceResponse(result); }
+      setStatus('EN VEILLE');
+    },200);
+  } else { await callAI(text, voiceMode); }
+  // Auto-restart listening after response
+  if(voiceMode&&isVoiceMode) setTimeout(startListening,1200);
+}
+
+// ══════════════════════════════════════════════
+// TEXT MODE INPUT
+// ══════════════════════════════════════════════
+function sendText() {
+  const inp=document.getElementById('text-input'); const val=inp.value.trim();
+  if(!val) return; inp.value=''; runCommand(val,false);
+}
+document.getElementById('text-input').addEventListener('keydown',e=>{ if(e.key==='Enter') sendText(); });
+
+// ══════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════
+window.speechSynthesis && window.speechSynthesis.getVoices(); // preload
+setTimeout(()=>{
+  const intro="Systèmes initialisés. Bienvenue, Monsieur. A.R.C. est opérationnel. Le mode vocal est actif — parlez pour interagir.";
+  addMsg('ai',intro);
+  addLog('Système démarré');
+  speak(intro);
+  showVoiceResponse(intro);
+  // Start voice mode
+  startListening();
+},800);
+</script>
+</body>
+</html>
