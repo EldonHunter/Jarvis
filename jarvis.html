@@ -1,0 +1,997 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>A.R.C. — Adaptive Response Core</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Rajdhani:wght@300;400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --cyan:#00C8FF;--cyan-dim:#0088BB;--cyan-glow:rgba(0,200,255,0.15);
+  --teal:#00FFCC;--teal-dim:#00AA88;
+  --orange:#FF6B00;--orange-glow:rgba(255,107,0,0.2);
+  --bg:#020C14;--panel:#000F1E;--panel2:#001628;
+  --text:#A8D8EE;--text-dim:#2E5A78;--border:rgba(0,200,255,0.16);
+}
+html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Rajdhani',sans-serif;overflow:hidden;user-select:none}
+body::after{content:'';position:fixed;inset:0;pointer-events:none;z-index:9998;
+  background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.055) 2px,rgba(0,0,0,0.055) 4px)}
+
+/* ── LAYOUT ── */
+#app{position:relative;height:100vh;display:grid;
+  grid-template-columns:220px 1fr 220px;
+  grid-template-rows:52px 1fr 120px;
+  gap:1px;background:var(--border);z-index:1}
+
+/* ── HEADER ── */
+#header{grid-column:1/-1;background:var(--panel);
+  display:flex;align-items:center;justify-content:space-between;padding:0 20px}
+.logo{font-family:'Orbitron',sans-serif;font-size:16px;font-weight:900;letter-spacing:6px;
+  color:var(--cyan);text-shadow:0 0 20px var(--cyan)}
+.logo span{color:var(--orange)}
+.hstatus{display:flex;gap:20px;font-size:10px;letter-spacing:2px;color:var(--text-dim);font-weight:600}
+.sdot{display:inline-block;width:5px;height:5px;border-radius:50%;
+  background:var(--cyan);box-shadow:0 0 6px var(--cyan);animation:pulse 2s infinite;margin-right:5px}
+.htime{font-family:'Orbitron',sans-serif;font-size:12px;color:var(--cyan);letter-spacing:3px}
+
+/* ── LEFT PANEL ── */
+#left-panel{background:var(--panel);padding:12px;display:flex;flex-direction:column;gap:8px;overflow-y:auto}
+.plabel{font-family:'Orbitron',sans-serif;font-size:8px;letter-spacing:3px;color:var(--text-dim);
+  padding-bottom:4px;border-bottom:1px solid var(--border);margin-bottom:2px}
+.stat-bar{margin-bottom:6px}
+.stat-h{display:flex;justify-content:space-between;font-size:10px;letter-spacing:1px;margin-bottom:3px;color:var(--text-dim)}
+.sval{color:var(--cyan);font-weight:600}
+.btrack{height:2px;background:rgba(0,200,255,0.07);border-radius:2px;overflow:hidden}
+.bfill{height:100%;background:linear-gradient(90deg,var(--cyan-dim),var(--cyan));border-radius:2px;
+  transition:width 1.2s ease;box-shadow:0 0 5px var(--cyan)}
+.info-card{background:var(--panel2);border:1px solid var(--border);padding:9px}
+.icard-t{font-family:'Orbitron',sans-serif;font-size:8px;letter-spacing:2px;color:var(--text-dim);margin-bottom:5px}
+.ival{font-size:18px;font-weight:700;color:var(--cyan);font-family:'Orbitron',sans-serif;line-height:1}
+
+/* Mode & Commands buttons in left panel */
+.lpanel-btn{width:100%;background:transparent;border:1px solid var(--border);
+  color:var(--text-dim);font-family:'Orbitron',sans-serif;font-size:8px;letter-spacing:2px;
+  padding:9px 12px;cursor:pointer;transition:all .2s;text-align:center;margin-top:2px}
+.lpanel-btn:hover{color:var(--cyan);border-color:var(--cyan);background:var(--cyan-glow)}
+.lpanel-btn.mode-vocal{color:var(--teal);border-color:rgba(0,255,204,0.35);background:rgba(0,255,204,0.06)}
+.lpanel-btn.mode-texte{color:var(--orange);border-color:rgba(255,107,0,0.35);background:var(--orange-glow)}
+
+/* ── CENTER ── */
+#center{background:#020C14;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;position:relative;overflow:hidden}
+#galaxy-canvas{position:absolute;inset:0;width:100%;height:100%}
+
+#arc-status{position:absolute;bottom:56px;left:50%;transform:translateX(-50%);
+  font-family:'Orbitron',sans-serif;font-size:9px;letter-spacing:3px;
+  color:rgba(0,255,204,0.55);text-align:center;pointer-events:none;z-index:10;
+  text-shadow:0 0 10px var(--teal)}
+
+#voice-response{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);
+  width:82%;max-width:500px;text-align:center;font-family:'Rajdhani',sans-serif;
+  font-size:12px;letter-spacing:1px;color:var(--teal);line-height:1.6;
+  text-shadow:0 0 10px var(--teal);background:rgba(2,12,20,0.85);
+  border:1px solid rgba(0,255,204,0.2);padding:9px 14px;
+  opacity:0;transition:opacity .4s;pointer-events:none;z-index:10}
+#voice-response.visible{opacity:1}
+
+#listen-waves{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  display:none;align-items:center;gap:4px;height:30px;z-index:15;pointer-events:none}
+#listen-waves.active{display:flex}
+.wbar{width:3px;background:var(--teal);border-radius:2px;box-shadow:0 0 6px var(--teal);animation:wave .9s ease-in-out infinite}
+.wbar:nth-child(1){height:6px;animation-delay:0s}.wbar:nth-child(2){height:13px;animation-delay:.1s}
+.wbar:nth-child(3){height:20px;animation-delay:.2s}.wbar:nth-child(4){height:13px;animation-delay:.3s}
+.wbar:nth-child(5){height:6px;animation-delay:.4s}
+
+#center::before,#center::after{content:'';position:absolute;width:32px;height:32px;border-style:solid;border-color:rgba(0,255,204,0.15);z-index:5}
+#center::before{top:10px;left:10px;border-width:1px 0 0 1px}
+#center::after{bottom:10px;right:10px;border-width:0 1px 1px 0}
+
+/* ── RIGHT PANEL ── */
+#right-panel{background:var(--panel);padding:12px;display:flex;flex-direction:column;gap:8px;overflow-y:auto}
+#activity-log{flex:1;overflow-y:auto}
+.log-entry{font-size:10px;padding:4px 0;border-bottom:1px solid rgba(0,200,255,0.05);color:var(--text-dim);line-height:1.4}
+.ltime{color:var(--teal-dim);font-family:'Orbitron',sans-serif;font-size:8px;margin-right:5px}
+
+/* ── BOTTOM ── */
+#bottom{grid-column:1/-1;background:var(--panel);display:flex;flex-direction:column;border-top:1px solid var(--border)}
+#chat-output{flex:1;padding:7px 18px;overflow-y:auto;display:flex;flex-direction:column;gap:3px}
+.msg{font-size:12px;letter-spacing:.5px;line-height:1.5;animation:fadeIn .3s ease}
+.msg.user{color:var(--text-dim)}.msg.user::before{content:'› ';color:var(--orange);font-weight:700}
+.msg.ai{color:var(--teal)}.msg.ai::before{content:'A.R.C. ';font-family:'Orbitron',sans-serif;font-size:9px;font-weight:700;margin-right:4px;color:var(--teal)}
+#input-row{display:flex;align-items:center;border-top:1px solid var(--border);padding:0 0 0 18px}
+#text-input{flex:1;background:transparent;border:none;outline:none;color:var(--text);
+  font-family:'Rajdhani',sans-serif;font-size:14px;font-weight:500;letter-spacing:1px;
+  padding:12px 0;caret-color:var(--teal);display:none}
+#text-input::placeholder{color:var(--text-dim)}
+.ibtn{background:transparent;border:none;border-left:1px solid var(--border);color:var(--text-dim);
+  font-family:'Orbitron',sans-serif;font-size:9px;letter-spacing:1px;padding:0 16px;
+  height:44px;cursor:pointer;transition:all .2s;white-space:nowrap}
+.ibtn:hover{color:var(--teal);background:rgba(0,255,204,0.06)}
+#send-btn{display:none}
+#bottom-mode-label{font-family:'Orbitron',sans-serif;font-size:8px;letter-spacing:2px;
+  color:var(--text-dim);white-space:nowrap;margin-right:14px}
+
+/* ── FLOATING PANELS ── */
+.fpanel{position:fixed;z-index:2000;background:rgba(2,10,20,0.97);
+  border:1px solid var(--border);box-shadow:0 0 40px rgba(0,200,255,0.08);display:none}
+.fpanel.open{display:block;animation:fadeIn .25s ease}
+.fpanel-hdr{display:flex;align-items:center;justify-content:space-between;
+  padding:9px 13px;border-bottom:1px solid var(--border);
+  font-family:'Orbitron',sans-serif;font-size:9px;letter-spacing:2px;color:var(--cyan);cursor:move}
+.fpanel-x{background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:13px;padding:0 2px}
+.fpanel-x:hover{color:var(--orange)}
+
+/* Map */
+#map-panel{top:80px;left:50%;transform:translateX(-50%);width:420px}
+#map-container{width:100%;height:230px}
+#map-addr{padding:8px 12px;font-size:11px;color:var(--text-dim)}
+
+/* Weather */
+#wx-panel{top:80px;right:230px;width:290px}
+.wx-main{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.wx-icon{font-size:38px}.wx-temp{font-family:'Orbitron',sans-serif;font-size:28px;color:var(--cyan);font-weight:700}
+.wx-desc{color:var(--text-dim);font-size:11px;letter-spacing:1px;margin-top:2px}
+.wx-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.wx-item{background:var(--panel2);padding:7px;text-align:center}
+.wx-item-l{font-size:8px;color:var(--text-dim);letter-spacing:1px;font-family:'Orbitron',sans-serif}
+.wx-item-v{font-size:13px;color:var(--text);font-weight:600;margin-top:2px}
+.wx-fc{margin-top:9px;display:flex;gap:5px}
+.wx-day{flex:1;background:var(--panel2);padding:5px 3px;text-align:center;font-size:9px}
+.wx-dn{color:var(--text-dim);font-family:'Orbitron',sans-serif;font-size:7px;letter-spacing:1px}
+.wx-di{font-size:15px;margin:3px 0}
+.wx-dt{color:var(--cyan);font-weight:600}
+
+/* Commands Panel */
+#cmd-panel{top:50%;left:50%;transform:translate(-50%,-50%);width:540px;max-height:78vh}
+#cmd-panel .fpanel-hdr{cursor:default}
+#cmd-body{padding:14px;overflow-y:auto;max-height:calc(78vh - 46px)}
+.cmd-section{margin-bottom:14px}
+.cmd-section-title{font-family:'Orbitron',sans-serif;font-size:9px;letter-spacing:3px;
+  color:var(--teal);margin-bottom:8px;padding-bottom:5px;border-bottom:1px solid rgba(0,255,204,0.12)}
+.cmd-row{display:flex;gap:10px;margin-bottom:7px;align-items:flex-start}
+.cmd-trigger{background:rgba(0,200,255,0.07);border:1px solid var(--border);
+  padding:4px 9px;font-family:'Orbitron',sans-serif;font-size:8px;letter-spacing:1px;
+  color:var(--cyan);white-space:nowrap;flex-shrink:0}
+.cmd-desc{font-size:11px;color:var(--text-dim);letter-spacing:.5px;line-height:1.4}
+.cmd-phrases{font-size:10px;color:rgba(0,200,255,0.4);margin-top:2px;font-style:italic}
+
+/* Automations panel */
+#auto-panel{top:50%;left:50%;transform:translate(-50%,-50%);width:500px;max-height:75vh}
+#auto-body{padding:14px;overflow-y:auto;max-height:calc(75vh - 46px)}
+.auto-item{background:var(--panel2);border:1px solid var(--border);padding:10px 12px;margin-bottom:8px}
+.auto-title{font-family:'Orbitron',sans-serif;font-size:9px;letter-spacing:2px;color:var(--teal);margin-bottom:4px}
+.auto-desc{font-size:11px;color:var(--text-dim);line-height:1.5}
+.auto-tag{display:inline-block;font-size:8px;font-family:'Orbitron',sans-serif;letter-spacing:1px;
+  padding:2px 6px;margin-top:5px;border:1px solid;margin-right:4px}
+.tag-possible{color:#44FF88;border-color:rgba(68,255,136,0.3)}
+.tag-partial{color:var(--gold,#FFB830);border-color:rgba(255,184,48,0.3)}
+.tag-limited{color:var(--orange);border-color:rgba(255,107,0,0.3)}
+
+/* ── ANIMS ── */
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes wave{0%,100%{transform:scaleY(.35)}50%{transform:scaleY(1.5)}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+@keyframes blink{50%{opacity:0}}
+.typing::after{content:'▌';animation:blink .7s infinite}
+::-webkit-scrollbar{width:3px}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- HEADER -->
+<header id="header">
+  <div class="logo">A<span>.</span>R<span>.</span>C<span>.</span></div>
+  <div class="hstatus">
+    <span><span class="sdot"></span>SYSTÈME EN LIGNE</span>
+    <span>v6.0.0</span>
+    <span id="mode-badge">● VOCAL</span>
+  </div>
+  <div class="htime" id="clock">--:--:--</div>
+</header>
+
+<!-- LEFT PANEL -->
+<aside id="left-panel">
+  <div class="plabel">RESSOURCES</div>
+  <div class="stat-bar"><div class="stat-h"><span>PROCESSEUR</span><span class="sval" id="cpu-v">--</span></div><div class="btrack"><div class="bfill" id="cpu-b" style="width:0"></div></div></div>
+  <div class="stat-bar"><div class="stat-h"><span>MÉMOIRE</span><span class="sval" id="mem-v">--</span></div><div class="btrack"><div class="bfill" id="mem-b" style="width:0"></div></div></div>
+  <div class="stat-bar"><div class="stat-h"><span>RÉSEAU</span><span class="sval" id="net-v">--</span></div><div class="btrack"><div class="bfill" id="net-b" style="width:0"></div></div></div>
+
+  <div class="plabel" style="margin-top:4px">SESSION</div>
+  <div class="info-card"><div class="icard-t">DURÉE</div><div class="ival" id="sess-t">00:00</div></div>
+  <div class="info-card"><div class="icard-t">REQUÊTES</div><div class="ival" id="req-c">0</div></div>
+  <div class="info-card"><div class="icard-t">DATE</div><div class="ival" id="date-d" style="font-size:9px;line-height:1.6">--</div></div>
+
+  <!-- MODE BUTTON -->
+  <button class="lpanel-btn mode-vocal" id="mode-btn" onclick="toggleMode()">🎤 MODE VOCAL ACTIF</button>
+  <!-- COMMANDS BUTTON -->
+  <button class="lpanel-btn" onclick="openPanel('cmd-panel')" style="margin-top:0">📋 COMMANDES</button>
+  <!-- AUTOMATIONS BUTTON -->
+  <button class="lpanel-btn" onclick="openPanel('auto-panel')" style="margin-top:0">⚡ AUTOMATISMES</button>
+</aside>
+
+<!-- CENTER (Three.js) -->
+<main id="center">
+  <canvas id="galaxy-canvas"></canvas>
+  <div id="arc-status">EN VEILLE</div>
+  <div id="listen-waves">
+    <div class="wbar"></div><div class="wbar"></div><div class="wbar"></div><div class="wbar"></div><div class="wbar"></div>
+  </div>
+  <div id="voice-response"></div>
+</main>
+
+<!-- RIGHT PANEL -->
+<aside id="right-panel">
+  <div class="plabel">JOURNAL</div>
+  <div id="activity-log"></div>
+</aside>
+
+<!-- BOTTOM -->
+<div id="bottom">
+  <div id="chat-output"></div>
+  <div id="input-row">
+    <div id="bottom-mode-label">🎤 VOCAL</div>
+    <input type="text" id="text-input" placeholder="Entrez une commande ou une question…" autocomplete="off"/>
+    <button class="ibtn" id="send-btn" onclick="sendText()">ENVOYER</button>
+  </div>
+</div>
+
+<!-- MAP PANEL -->
+<div class="fpanel" id="map-panel">
+  <div class="fpanel-hdr" id="map-dh"><span>📍 LOCALISATION</span><button class="fpanel-x" onclick="closePanel('map-panel')">✕</button></div>
+  <div style="padding:0"><div id="map-container"></div><div id="map-addr">Localisation en cours…</div></div>
+</div>
+
+<!-- WEATHER PANEL -->
+<div class="fpanel" id="wx-panel">
+  <div class="fpanel-hdr" id="wx-dh"><span>🌍 MÉTÉO LOCALE</span><button class="fpanel-x" onclick="closePanel('wx-panel')">✕</button></div>
+  <div style="padding:13px" id="wx-body"><div style="color:var(--text-dim);font-size:11px">Chargement…</div></div>
+</div>
+
+<!-- COMMANDS PANEL -->
+<div class="fpanel" id="cmd-panel">
+  <div class="fpanel-hdr"><span>📋 COMMANDES DISPONIBLES</span><button class="fpanel-x" onclick="closePanel('cmd-panel')">✕</button></div>
+  <div id="cmd-body">
+
+    <div class="cmd-section">
+      <div class="cmd-section-title">🕐 HEURE &amp; DATE</div>
+      <div class="cmd-row"><div class="cmd-trigger">heure / date</div><div><div class="cmd-desc">Affiche l'heure et la date actuelles.</div><div class="cmd-phrases">"Quelle heure est-il ?" · "Quel jour sommes-nous ?" · "Donne-moi la date"</div></div></div>
+    </div>
+
+    <div class="cmd-section">
+      <div class="cmd-section-title">📍 LOCALISATION</div>
+      <div class="cmd-row"><div class="cmd-trigger">localisation</div><div><div class="cmd-desc">Affiche votre position sur une carte interactive.</div><div class="cmd-phrases">"Où suis-je ?" · "Localise-moi" · "Affiche ma position" · "Montre la carte" · "Quelle est ma localisation ?"</div></div></div>
+    </div>
+
+    <div class="cmd-section">
+      <div class="cmd-section-title">🌤 MÉTÉO</div>
+      <div class="cmd-row"><div class="cmd-trigger">météo</div><div><div class="cmd-desc">Affiche la météo en temps réel et les prévisions 5 jours.</div><div class="cmd-phrases">"Quel temps fait-il ?" · "Quelle est la météo ?" · "Il fait combien dehors ?" · "Donne-moi les prévisions" · "Température actuelle"</div></div></div>
+    </div>
+
+    <div class="cmd-section">
+      <div class="cmd-section-title">🔢 CALCUL</div>
+      <div class="cmd-row"><div class="cmd-trigger">calcul / nombre</div><div><div class="cmd-desc">Effectue un calcul mathématique.</div><div class="cmd-phrases">"Calcule 42 fois 7" · "Combien font 150 plus 89 ?" · "Quel est le résultat de 512 divisé par 4 ?"</div></div></div>
+    </div>
+
+    <div class="cmd-section">
+      <div class="cmd-section-title">😄 BLAGUE</div>
+      <div class="cmd-row"><div class="cmd-trigger">blague</div><div><div class="cmd-desc">A.R.C. raconte une blague.</div><div class="cmd-phrases">"Raconte-moi une blague" · "Fais-moi rire" · "Tu connais une blague ?" · "Dis quelque chose de drôle"</div></div></div>
+    </div>
+
+    <div class="cmd-section">
+      <div class="cmd-section-title">💡 CITATION</div>
+      <div class="cmd-row"><div class="cmd-trigger">citation</div><div><div class="cmd-desc">Partage une citation inspirante.</div><div class="cmd-phrases">"Donne-moi une citation" · "Inspire-moi" · "Une pensée du jour" · "Dis-moi quelque chose de motivant"</div></div></div>
+    </div>
+
+    <div class="cmd-section">
+      <div class="cmd-section-title">🔄 CHANGER DE MODE</div>
+      <div class="cmd-row"><div class="cmd-trigger">passage texte</div><div><div class="cmd-desc">Désactive le micro, affiche le champ de saisie.</div><div class="cmd-phrases">"Passe en mode texte" · "Passage texte" · "Désactive le micro" · "Je veux écrire"</div></div></div>
+      <div class="cmd-row"><div class="cmd-trigger">passage vocal</div><div><div class="cmd-desc">Réactive le micro et le mode vocal.</div><div class="cmd-phrases">"Retour vocal" · "Passe en mode vocal" · "Réactive le micro" · "Mode vocal"</div></div></div>
+    </div>
+
+    <div class="cmd-section">
+      <div class="cmd-section-title">ℹ️ À PROPOS</div>
+      <div class="cmd-row"><div class="cmd-trigger">aide / qui es-tu</div><div><div class="cmd-desc">Liste les fonctions ou présente A.R.C.</div><div class="cmd-phrases">"Qu'est-ce que tu sais faire ?" · "Présente-toi" · "Aide-moi" · "Quelles sont tes capacités ?"</div></div></div>
+    </div>
+
+    <div class="cmd-section">
+      <div class="cmd-section-title">💬 QUESTIONS LIBRES</div>
+      <div class="cmd-row"><div class="cmd-trigger">tout le reste</div><div><div class="cmd-desc">Toute question non reconnue est envoyée à l'intelligence centrale d'A.R.C. (IA générative).</div><div class="cmd-phrases">Exemples : "Explique-moi le Big Bang", "Écris-moi un haïku", "Traduis bonjour en japonais"…</div></div></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- AUTOMATIONS PANEL -->
+<div class="fpanel" id="auto-panel">
+  <div class="fpanel-hdr"><span>⚡ IDÉES D'AUTOMATISMES</span><button class="fpanel-x" onclick="closePanel('auto-panel')">✕</button></div>
+  <div id="auto-body">
+
+    <div class="auto-item">
+      <div class="auto-title">🔊 CONTRÔLE DU VOLUME</div>
+      <div class="auto-desc">Augmenter, diminuer ou couper le son du navigateur. "Monte le volume", "Coupe le son", "Volume à 50%".</div>
+      <span class="auto-tag tag-possible">POSSIBLE via Web Audio API</span>
+    </div>
+
+    <div class="auto-item">
+      <div class="auto-title">🌙 MODE SOMBRE / CLAIR</div>
+      <div class="auto-desc">Basculer le thème de l'interface entre sombre et lumineux. "Active le mode clair", "Passe en mode sombre".</div>
+      <span class="auto-tag tag-possible">POSSIBLE nativement</span>
+    </div>
+
+    <div class="auto-item">
+      <div class="auto-title">🔕 NE PAS DÉRANGER</div>
+      <div class="auto-desc">Suspendre toutes les notifications et écoute vocale pour une durée définie. "Ne me dérange pas pendant 30 minutes".</div>
+      <span class="auto-tag tag-possible">POSSIBLE nativement</span>
+    </div>
+
+    <div class="auto-item">
+      <div class="auto-title">⏱ MINUTEUR / ALARME</div>
+      <div class="auto-desc">Lancer un compte à rebours ou une alarme vocale. "Minuteur 5 minutes", "Rappelle-moi dans 1 heure".</div>
+      <span class="auto-tag tag-possible">POSSIBLE nativement</span>
+    </div>
+
+    <div class="auto-item">
+      <div class="auto-title">📋 COPIER DANS LE PRESSE-PAPIER</div>
+      <div class="auto-desc">Copier automatiquement la dernière réponse d'A.R.C. "Copie la réponse", "Copie ce texte".</div>
+      <span class="auto-tag tag-possible">POSSIBLE via Clipboard API</span>
+    </div>
+
+    <div class="auto-item">
+      <div class="auto-title">🖥 PLEIN ÉCRAN</div>
+      <div class="auto-desc">Passer l'interface en plein écran ou quitter. "Plein écran", "Quitte le plein écran".</div>
+      <span class="auto-tag tag-possible">POSSIBLE via Fullscreen API</span>
+    </div>
+
+    <div class="auto-item">
+      <div class="auto-title">🔗 OUVRIR UN SITE WEB</div>
+      <div class="auto-desc">Ouvrir un lien dans un nouvel onglet. "Ouvre YouTube", "Va sur Google", "Ouvre Wikipedia".</div>
+      <span class="auto-tag tag-possible">POSSIBLE via window.open</span>
+    </div>
+
+    <div class="auto-item">
+      <div class="auto-title">❌ FERMER L'ONGLET ACTUEL</div>
+      <div class="auto-desc">Fermer l'onglet en cours. "Ferme cet onglet", "Quitte". Fonctionne si l'onglet a été ouvert par un script.</div>
+      <span class="auto-tag tag-partial">PARTIEL (selon origine)</span>
+    </div>
+
+    <div class="auto-item">
+      <div class="auto-title">📸 CAPTURE D'ÉCRAN</div>
+      <div class="auto-desc">Capturer l'écran et télécharger l'image. "Prends une capture", "Screenshot".</div>
+      <span class="auto-tag tag-partial">PARTIEL via html2canvas</span>
+    </div>
+
+    <div class="auto-item">
+      <div class="auto-title">📁 TÉLÉCHARGER UN FICHIER</div>
+      <div class="auto-desc">Générer et télécharger un fichier (résumé, rapport, texte). "Télécharge la conversation", "Exporte le log".</div>
+      <span class="auto-tag tag-possible">POSSIBLE nativement</span>
+    </div>
+
+    <div class="auto-item">
+      <div class="auto-title">💡 RAPPORT MÉTÉO AUTOMATIQUE</div>
+      <div class="auto-desc">Afficher automatiquement la météo au démarrage ou toutes les X heures sans demande.</div>
+      <span class="auto-tag tag-possible">POSSIBLE nativement</span>
+    </div>
+
+    <div class="auto-item">
+      <div class="auto-title">🎵 LECTURE MUSICALE</div>
+      <div class="auto-desc">Lire une playlist locale ou ouvrir Spotify/YouTube Music. "Mets de la musique", "Lance Spotify".</div>
+      <span class="auto-tag tag-limited">LIMITÉ (ouverture d'onglet)</span>
+    </div>
+
+    <div class="auto-item">
+      <div class="auto-title">🔔 NOTIFICATIONS BUREAU</div>
+      <div class="auto-desc">Envoyer des notifications système même si l'onglet est en arrière-plan. "Notifie-moi quand…"</div>
+      <span class="auto-tag tag-possible">POSSIBLE via Notifications API</span>
+    </div>
+
+    <div class="auto-item">
+      <div class="auto-title">📡 PING RÉSEAU</div>
+      <div class="auto-desc">Vérifier la connexion internet et la latence. "Teste ma connexion", "Suis-je connecté ?".</div>
+      <span class="auto-tag tag-possible">POSSIBLE nativement</span>
+    </div>
+
+  </div>
+</div>
+
+</div><!-- #app -->
+
+<script>
+// ══════════════════════════════════════════════════════
+//  THREE.JS — QUANTUM WAVE RING (style image référence)
+// ══════════════════════════════════════════════════════
+(function(){
+  const canvas = document.getElementById('galaxy-canvas');
+  const renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+  renderer.setClearColor(0x000000, 0);
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 500);
+  camera.position.set(0, 0.6, 4.8);
+  camera.lookAt(0, 0, 0);
+
+  function resize(){
+    const el=canvas.parentElement, w=el.clientWidth, h=el.clientHeight;
+    renderer.setSize(w,h); camera.aspect=w/h; camera.updateProjectionMatrix();
+  }
+  resize(); window.addEventListener('resize', resize);
+
+  // ── Background stars ──
+  const starGeo = new THREE.BufferGeometry();
+  const sPos = new Float32Array(2400*3);
+  for(let i=0;i<2400*3;i++) sPos[i]=(Math.random()-.5)*120;
+  starGeo.setAttribute('position', new THREE.BufferAttribute(sPos,3));
+  scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({color:0xffffff,size:0.055,transparent:true,opacity:0.6})));
+
+  // Blue-green nebula stars
+  const nbGeo=new THREE.BufferGeometry();
+  const nbP=new Float32Array(500*3), nbC=new Float32Array(500*3);
+  for(let i=0;i<500;i++){
+    nbP[i*3]=(Math.random()-.5)*80; nbP[i*3+1]=(Math.random()-.5)*80; nbP[i*3+2]=(Math.random()-.5)*80;
+    nbC[i*3]=0; nbC[i*3+1]=.7+Math.random()*.3; nbC[i*3+2]=.6+Math.random()*.4;
+  }
+  nbGeo.setAttribute('position',new THREE.BufferAttribute(nbP,3));
+  nbGeo.setAttribute('color',new THREE.BufferAttribute(nbC,3));
+  scene.add(new THREE.Points(nbGeo,new THREE.PointsMaterial({size:.09,vertexColors:true,transparent:true,opacity:.45})));
+
+  // ── Planet (small, center) ──
+  function makePlanetTex(){
+    const c=document.createElement('canvas'); c.width=256; c.height=128;
+    const ctx=c.getContext('2d');
+    const g=ctx.createLinearGradient(0,0,256,128);
+    g.addColorStop(0,'#061420'); g.addColorStop(.5,'#082030'); g.addColorStop(1,'#061420');
+    ctx.fillStyle=g; ctx.fillRect(0,0,256,128);
+    ctx.fillStyle='rgba(0,80,60,0.6)';
+    [[50,60,50,35],[130,40,70,45],[200,80,55,30]].forEach(([x,y,w,h])=>{
+      ctx.beginPath(); ctx.ellipse(x,y,w,h,0,0,Math.PI*2); ctx.fill();
+    });
+    ctx.fillStyle='rgba(0,180,140,0.12)';
+    for(let i=0;i<6;i++){ctx.beginPath();ctx.ellipse(Math.random()*256,Math.random()*128,Math.random()*50+15,Math.random()*12+4,Math.random(),0,Math.PI*2);ctx.fill();}
+    return new THREE.CanvasTexture(c);
+  }
+  const planet=new THREE.Mesh(
+    new THREE.SphereGeometry(0.52,48,48),
+    new THREE.MeshPhongMaterial({map:makePlanetTex(),shininess:30,specular:new THREE.Color(0x003322)})
+  );
+  scene.add(planet);
+  // Atmosphere
+  scene.add(new THREE.Mesh(
+    new THREE.SphereGeometry(0.56,48,48),
+    new THREE.MeshPhongMaterial({color:0x00FFCC,transparent:true,opacity:0.08,side:THREE.FrontSide})
+  ));
+
+  // ── QUANTUM WAVE RING (the main visual) ──
+  // Two interleaved toroidal wave bands made of particles, like the reference image
+  const RING_PARTICLES = 6000;
+  const RING_LAYERS = 3; // multiple wave "sheets"
+
+  function makeWaveRing(particleCount, layers, baseRadius, tubeRadius, color, phaseOffset){
+    const geo = new THREE.BufferGeometry();
+    const pos = new Float32Array(particleCount * 3);
+    const alphas = new Float32Array(particleCount);
+    const phases = new Float32Array(particleCount); // store phase for animation
+
+    for(let i=0;i<particleCount;i++){
+      const t = (i/particleCount)*Math.PI*2;
+      const layer = Math.floor(i/(particleCount/layers));
+      const layerPhase = (layer/layers)*Math.PI*2 + phaseOffset;
+      // Wave deformation
+      const waveAmp = tubeRadius * (0.4 + Math.random()*0.6);
+      const r = baseRadius + Math.sin(t*4 + layerPhase)*waveAmp*0.5;
+      const y = Math.cos(t*4 + layerPhase)*waveAmp*0.35 + (Math.random()-.5)*tubeRadius*0.3;
+      pos[i*3]   = Math.cos(t)*r;
+      pos[i*3+1] = y;
+      pos[i*3+2] = Math.sin(t)*r;
+      phases[i]  = t;
+      alphas[i]  = 0.3 + Math.random()*0.7;
+    }
+    geo.setAttribute('position', new THREE.BufferAttribute(pos,3));
+    geo.setAttribute('phase', new THREE.BufferAttribute(phases,1));
+
+    const mat = new THREE.PointsMaterial({
+      color, size:0.018, transparent:true, opacity:0.75,
+      blending:THREE.AdditiveBlending, depthWrite:false
+    });
+    const ring = new THREE.Points(geo,mat);
+    ring.userData = {phases, baseRadius, tubeRadius, phaseOffset, layers};
+    return ring;
+  }
+
+  const ring1 = makeWaveRing(RING_PARTICLES, RING_LAYERS, 1.35, 0.38, 0x00FFCC, 0);
+  const ring2 = makeWaveRing(RING_PARTICLES*0.6, RING_LAYERS, 1.35, 0.28, 0x00C8FF, Math.PI/RING_LAYERS);
+  const ring3 = makeWaveRing(RING_PARTICLES*0.3, RING_LAYERS, 1.35, 0.18, 0x88FFEE, Math.PI*0.7);
+  // Tilt the rings slightly like the reference image
+  ring1.rotation.x = 0.15;
+  ring2.rotation.x = 0.15;
+  ring3.rotation.x = 0.15;
+  scene.add(ring1, ring2, ring3);
+
+  // ── Glow disc behind ring (lens flare simulation) ──
+  const glowGeo=new THREE.RingGeometry(0.95,1.78,128);
+  const glowMat=new THREE.MeshBasicMaterial({
+    color:0x00FFCC, transparent:true, opacity:0.03,
+    side:THREE.DoubleSide, blending:THREE.AdditiveBlending, depthWrite:false
+  });
+  const glowDisc=new THREE.Mesh(glowGeo,glowMat);
+  glowDisc.rotation.x=0.15;
+  scene.add(glowDisc);
+
+  // ── Lights ──
+  scene.add(new THREE.AmbientLight(0x0A2233,1.5));
+  const sun=new THREE.DirectionalLight(0x00FFCC,1.8); sun.position.set(4,3,4); scene.add(sun);
+  const rim=new THREE.DirectionalLight(0x004488,1.2); rim.position.set(-4,1,-4); scene.add(rim);
+
+  // ── Animation ──
+  let t=0;
+  // Pre-store original positions for wave animation
+  function storeBase(ring){
+    const pos=ring.geometry.attributes.position;
+    const base=new Float32Array(pos.array.length);
+    base.set(pos.array);
+    ring.userData.basePos=base;
+  }
+  storeBase(ring1); storeBase(ring2); storeBase(ring3);
+
+  function animateRing(ring, speed, waveSpeed, ampMult){
+    const pos=ring.geometry.attributes.position;
+    const base=ring.userData.basePos;
+    const phases=ring.userData.phases;
+    const {baseRadius,tubeRadius,layers}=ring.userData;
+    const count=pos.count;
+    for(let i=0;i<count;i++){
+      const ph=phases[i];
+      const layer=Math.floor(i/(count/layers));
+      const layerPhase=(layer/layers)*Math.PI*2+ring.userData.phaseOffset;
+      // Animate wave deformation over time
+      const wAmp=tubeRadius*(0.4+Math.sin(t*0.8+layer)*0.3)*ampMult;
+      const r=baseRadius+Math.sin(ph*4+layerPhase+t*waveSpeed)*wAmp*0.55;
+      const y=Math.cos(ph*4+layerPhase+t*waveSpeed)*wAmp*0.38+(Math.random()-.5)*tubeRadius*0.04;
+      pos.array[i*3]  =Math.cos(ph)*r;
+      pos.array[i*3+1]=y;
+      pos.array[i*3+2]=Math.sin(ph)*r;
+    }
+    pos.needsUpdate=true;
+  }
+
+  function animate(){
+    requestAnimationFrame(animate);
+    t+=0.016;
+    planet.rotation.y+=0.003;
+    ring1.rotation.y+=0.004;
+    ring2.rotation.y-=0.003;
+    ring3.rotation.y+=0.002;
+    glowDisc.rotation.z+=0.001;
+    // Animate wave deformation (only every 2 frames for perf)
+    if(Math.round(t*60)%2===0){
+      animateRing(ring1,0.006,1.2,1.0);
+      animateRing(ring2,0.005,0.9,1.1);
+      animateRing(ring3,0.004,1.5,0.8);
+    }
+    renderer.render(scene,camera);
+  }
+  animate();
+})();
+
+// ══════════════════════════════════════════════
+//  PANEL UTILS
+// ══════════════════════════════════════════════
+function openPanel(id){document.getElementById(id).classList.add('open')}
+function closePanel(id){document.getElementById(id).classList.remove('open')}
+
+// Draggable
+['map-dh:map-panel','wx-dh:wx-panel'].forEach(pair=>{
+  const [hid,pid]=pair.split(':');
+  const handle=document.getElementById(hid), panel=document.getElementById(pid);
+  if(!handle||!panel) return;
+  let ox=0,oy=0,mx=0,my=0;
+  handle.onmousedown=e=>{
+    e.preventDefault(); mx=e.clientX; my=e.clientY;
+    document.onmousemove=e2=>{
+      ox=mx-e2.clientX; oy=my-e2.clientY; mx=e2.clientX; my=e2.clientY;
+      panel.style.top=(panel.offsetTop-oy)+'px';
+      panel.style.left=(panel.offsetLeft-ox)+'px';
+      panel.style.transform='none';
+    };
+    document.onmouseup=()=>{document.onmousemove=null;document.onmouseup=null};
+  };
+});
+
+// ══════════════════════════════════════════════
+//  CLOCK / STATS / LOG
+// ══════════════════════════════════════════════
+let sessionStart=Date.now(), reqCount=0;
+function updateClock(){
+  const now=new Date();
+  document.getElementById('clock').textContent=now.toLocaleTimeString('fr-FR');
+  document.getElementById('date-d').textContent=now.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'});
+  const e=Math.floor((Date.now()-sessionStart)/1000);
+  document.getElementById('sess-t').textContent=String(Math.floor(e/60)).padStart(2,'0')+':'+String(e%60).padStart(2,'0');
+}
+setInterval(updateClock,1000); updateClock();
+function updateStats(){
+  [{id:'cpu',mn:10,mx:68},{id:'mem',mn:35,mx:75},{id:'net',mn:4,mx:90}].forEach(v=>{
+    const p=Math.floor(Math.random()*(v.mx-v.mn)+v.mn);
+    document.getElementById(v.id+'-v').textContent=p+'%';
+    document.getElementById(v.id+'-b').style.width=p+'%';
+  });
+}
+updateStats(); setInterval(updateStats,3000);
+function addLog(text){
+  const log=document.getElementById('activity-log');
+  const d=document.createElement('div'); d.className='log-entry';
+  const t=new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+  d.innerHTML=`<span class="ltime">${t}</span>${text}`;
+  log.prepend(d); if(log.children.length>30) log.lastChild.remove();
+}
+
+// ══════════════════════════════════════════════
+//  MESSAGES & STATUS
+// ══════════════════════════════════════════════
+const output=document.getElementById('chat-output');
+function addMsg(role,text){
+  const d=document.createElement('div'); d.className=`msg ${role}`; d.textContent=text;
+  output.appendChild(d); output.scrollTop=output.scrollHeight; return d;
+}
+function setStatus(t){document.getElementById('arc-status').textContent=t}
+
+let vrTimer=null;
+function showVR(text){
+  const vr=document.getElementById('voice-response');
+  vr.textContent=text; vr.classList.add('visible');
+  clearTimeout(vrTimer);
+  vrTimer=setTimeout(()=>vr.classList.remove('visible'),Math.max(4000,text.length*55));
+}
+
+// ══════════════════════════════════════════════
+//  TTS
+// ══════════════════════════════════════════════
+function speak(text){
+  if(!('speechSynthesis' in window)) return;
+  window.speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(text);
+  u.lang='fr-FR'; u.rate=1.05; u.pitch=0.88;
+  const voices=window.speechSynthesis.getVoices();
+  const fr=voices.find(v=>v.lang.startsWith('fr'));
+  if(fr) u.voice=fr;
+  window.speechSynthesis.speak(u);
+}
+
+// ══════════════════════════════════════════════
+//  MODE VOCAL ↔ TEXTE
+// ══════════════════════════════════════════════
+let isVoiceMode=true, isListening=false, recognition=null, continueVoice=true;
+
+function toggleMode(){
+  isVoiceMode=!isVoiceMode;
+  const btn=document.getElementById('mode-btn');
+  const inp=document.getElementById('text-input');
+  const sb=document.getElementById('send-btn');
+  const bl=document.getElementById('bottom-mode-label');
+  const badge=document.getElementById('mode-badge');
+  if(isVoiceMode){
+    btn.textContent='🎤 MODE VOCAL ACTIF'; btn.className='lpanel-btn mode-vocal';
+    inp.style.display='none'; sb.style.display='none';
+    bl.textContent='🎤 VOCAL'; badge.textContent='● VOCAL';
+    continueVoice=true; startListening();
+  } else {
+    btn.textContent='⌨ MODE TEXTE ACTIF'; btn.className='lpanel-btn mode-texte';
+    inp.style.display='block'; sb.style.display='block';
+    bl.textContent='⌨ TEXTE'; badge.textContent='● TEXTE';
+    continueVoice=false; stopListening();
+    setTimeout(()=>document.getElementById('text-input').focus(),60);
+  }
+}
+
+function startListening(){
+  if(!('webkitSpeechRecognition' in window||'SpeechRecognition' in window)){ addMsg('ai','Module vocal non supporté. Utilisez Chrome.'); return; }
+  if(isListening) return;
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  recognition=new SR(); recognition.lang='fr-FR'; recognition.continuous=false; recognition.interimResults=false;
+  recognition.onstart=()=>{ isListening=true; document.getElementById('listen-waves').classList.add('active'); setStatus('ÉCOUTE…'); };
+  recognition.onresult=e=>{ const tx=e.results[0][0].transcript; stopListening(); runCommand(tx,true); };
+  recognition.onerror=()=>stopListening();
+  recognition.onend=()=>{ stopListening(); if(continueVoice&&isVoiceMode) setTimeout(startListening,900); };
+  recognition.start();
+}
+function stopListening(){
+  isListening=false; document.getElementById('listen-waves').classList.remove('active');
+  try{recognition&&recognition.stop()}catch(e){}
+  setStatus('EN VEILLE');
+}
+
+// ══════════════════════════════════════════════
+//  GEO + MAP
+// ══════════════════════════════════════════════
+let userLat=null, userLon=null, mapInst=null;
+async function geolocate(showMap=true, doWeather=false){
+  setStatus('LOCALISATION…');
+  return new Promise(resolve=>{
+    if(!navigator.geolocation){ addMsg('ai','Géolocalisation non disponible.'); resolve(null); return; }
+    navigator.geolocation.getCurrentPosition(async pos=>{
+      userLat=pos.coords.latitude; userLon=pos.coords.longitude;
+      let addr='Position obtenue';
+      try{
+        const r=await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${userLat}&lon=${userLon}&format=json`);
+        const d=await r.json(); addr=d.display_name||addr;
+        document.getElementById('map-addr').textContent='📍 '+addr.split(',').slice(0,3).join(', ');
+      }catch(e){}
+      if(showMap) openMapPanel();
+      if(doWeather) fetchWeather();
+      setStatus('EN VEILLE'); resolve({lat:userLat,lon:userLon,addr});
+    },()=>{ addMsg('ai','Impossible d\'obtenir la position. Vérifiez les autorisations.'); setStatus('EN VEILLE'); resolve(null); });
+  });
+}
+function openMapPanel(){
+  openPanel('map-panel');
+  if(!mapInst){
+    mapInst=L.map('map-container').setView([userLat||48.85,userLon||2.35],13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OSM'}).addTo(mapInst);
+  } else { mapInst.setView([userLat,userLon],13); mapInst.eachLayer(l=>{ if(l instanceof L.Marker) mapInst.removeLayer(l); }); }
+  if(userLat) L.marker([userLat,userLon]).addTo(mapInst).bindPopup('Vous êtes ici').openPopup();
+  setTimeout(()=>mapInst.invalidateSize(),220);
+}
+
+// ══════════════════════════════════════════════
+//  MÉTÉO (Open-Meteo)
+// ══════════════════════════════════════════════
+const WX_CODES={0:'Ciel dégagé ☀️',1:'Peu nuageux 🌤',2:'Partiellement nuageux ⛅',3:'Couvert ☁️',45:'Brouillard 🌫',48:'Brouillard givrant 🌫',51:'Bruine légère 🌦',53:'Bruine modérée 🌦',55:'Bruine dense 🌧',61:'Pluie faible 🌧',63:'Pluie modérée 🌧',65:'Pluie forte 🌧',71:'Neige légère 🌨',73:'Neige modérée ❄️',75:'Neige forte ❄️',80:'Averses légères 🌦',81:'Averses modérées 🌧',82:'Averses violentes ⛈',95:'Orage ⛈',96:'Orage avec grêle ⛈',99:'Orage violent ⛈'};
+const WX_ICONS={0:'☀️',1:'🌤',2:'⛅',3:'☁️',45:'🌫',48:'🌫',51:'🌦',53:'🌦',55:'🌧',61:'🌧',63:'🌧',65:'🌧',71:'🌨',73:'❄️',75:'❄️',80:'🌦',81:'🌧',82:'⛈',95:'⛈',96:'⛈',99:'⛈'};
+
+async function fetchWeather(){
+  if(!userLat){ await geolocate(false,false); if(!userLat){ addMsg('ai','Localisation requise pour la météo.'); return null; } }
+  setStatus('MÉTÉO EN COURS…');
+  try{
+    const url=`https://api.open-meteo.com/v1/forecast?latitude=${userLat}&longitude=${userLon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code,apparent_temperature&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=5`;
+    const res=await fetch(url); const d=await res.json();
+    const cur=d.current, daily=d.daily;
+    const code=cur.weather_code, desc=WX_CODES[code]||'Conditions inconnues', icon=WX_ICONS[code]||'🌡';
+    const days=['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+    let fc='';
+    for(let i=0;i<5;i++){
+      const dn=days[new Date(daily.time[i]).getDay()];
+      const di=WX_ICONS[daily.weather_code[i]]||'🌡';
+      fc+=`<div class="wx-day"><div class="wx-dn">${dn}</div><div class="wx-di">${di}</div><div class="wx-dt">${Math.round(daily.temperature_2m_max[i])}°</div></div>`;
+    }
+    document.getElementById('wx-body').innerHTML=`
+      <div class="wx-main"><div class="wx-icon">${icon}</div>
+        <div><div class="wx-temp">${Math.round(cur.temperature_2m)}°C</div><div class="wx-desc">${desc}</div></div></div>
+      <div class="wx-grid">
+        <div class="wx-item"><div class="wx-item-l">RESSENTI</div><div class="wx-item-v">${Math.round(cur.apparent_temperature)}°C</div></div>
+        <div class="wx-item"><div class="wx-item-l">HUMIDITÉ</div><div class="wx-item-v">${cur.relative_humidity_2m}%</div></div>
+        <div class="wx-item"><div class="wx-item-l">VENT</div><div class="wx-item-v">${Math.round(cur.wind_speed_10m)} km/h</div></div>
+        <div class="wx-item"><div class="wx-item-l">MIN / MAX</div><div class="wx-item-v">${Math.round(daily.temperature_2m_min[0])}° / ${Math.round(daily.temperature_2m_max[0])}°</div></div>
+      </div>
+      <div class="wx-fc">${fc}</div>`;
+    openPanel('wx-panel');
+    setStatus('EN VEILLE');
+    return `Température actuelle : ${Math.round(cur.temperature_2m)}°C. ${desc}. Vent à ${Math.round(cur.wind_speed_10m)} km/h.`;
+  }catch(e){ setStatus('EN VEILLE'); addMsg('ai','Erreur météo. Vérifiez votre connexion.'); return null; }
+}
+
+// ══════════════════════════════════════════════
+//  NATIVE AUTOMATIONS (already implemented)
+// ══════════════════════════════════════════════
+function doFullscreen(){
+  if(!document.fullscreenElement) document.documentElement.requestFullscreen().catch(()=>{});
+  else document.exitFullscreen();
+  return document.fullscreenElement ? "Plein écran désactivé." : "Plein écran activé, Monsieur.";
+}
+function doOpenSite(name){
+  const sites={youtube:'https://youtube.com',google:'https://google.com',wikipedia:'https://fr.wikipedia.org',spotify:'https://open.spotify.com',github:'https://github.com',twitter:'https://twitter.com',x:'https://x.com'};
+  const key=Object.keys(sites).find(k=>name.includes(k));
+  if(key){ window.open(sites[key],'_blank'); return `Ouverture de ${key}, Monsieur.`; }
+  return "Je ne connais pas ce site. Précisez le nom, Monsieur.";
+}
+let doNotDisturbTimer=null;
+function doNotDisturb(minutes){
+  continueVoice=false; stopListening();
+  setStatus(`NE PAS DÉRANGER — ${minutes} MIN`);
+  clearTimeout(doNotDisturbTimer);
+  doNotDisturbTimer=setTimeout(()=>{
+    if(isVoiceMode){ continueVoice=true; startListening(); }
+    setStatus('EN VEILLE');
+    const msg="Fin du mode Ne Pas Déranger. Je suis de nouveau à votre écoute.";
+    addMsg('ai',msg); speak(msg);
+  }, minutes*60000);
+  return `Mode Ne Pas Déranger activé pour ${minutes} minutes.`;
+}
+function doDownloadLog(){
+  const msgs=[...document.querySelectorAll('.msg')].map(m=>m.textContent).join('\n');
+  const blob=new Blob([`JOURNAL A.R.C. — ${new Date().toLocaleString('fr-FR')}\n${'='.repeat(50)}\n\n${msgs}`],{type:'text/plain'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='arc_log.txt'; a.click();
+  return "Journal exporté et téléchargé, Monsieur.";
+}
+function doCopyLast(){
+  const msgs=document.querySelectorAll('.msg.ai');
+  if(!msgs.length) return "Aucune réponse à copier.";
+  navigator.clipboard.writeText(msgs[msgs.length-1].textContent).catch(()=>{});
+  return "Dernière réponse copiée dans le presse-papier.";
+}
+let timerTimeout=null;
+function doTimer(minutes){
+  clearTimeout(timerTimeout);
+  const msg=`Minuteur de ${minutes} minute${minutes>1?'s':''} lancé.`;
+  timerTimeout=setTimeout(()=>{
+    const alert=`Monsieur, votre minuteur de ${minutes} minute${minutes>1?'s':''} est terminé.`;
+    addMsg('ai',alert); speak(alert); showVR(alert);
+    if(Notification.permission==='granted') new Notification('A.R.C.', {body:alert});
+  }, minutes*60000);
+  return msg;
+}
+function doNotif(permission){
+  if(permission==='granted') return "Les notifications sont déjà activées.";
+  Notification.requestPermission().then(p=>{
+    const r=p==='granted'?"Notifications activées avec succès.":"Permission refusée, Monsieur.";
+    addMsg('ai',r); if(isVoiceMode){speak(r); showVR(r);}
+  });
+  return "Demande de permission en cours…";
+}
+
+// ══════════════════════════════════════════════
+//  COMMANDS ENGINE (extended, full phrases)
+// ══════════════════════════════════════════════
+const JOKES=["Pourquoi les plongeurs plongent-ils toujours en arrière ? Parce que sinon ils tomberaient dans le bateau.","Un homme entre dans une bibliothèque. Il demande un livre sur le paradoxe. La bibliothécaire répond : il est là, mais il n'existe pas.","Comment appelle-t-on un chat tombé dans un pot de peinture ? Un chat-peint.","Qu'est-ce qu'un canif ? Un petit fien."];
+const CITATIONS=["Toute technologie suffisamment avancée est indistinguable de la magie. – Arthur C. Clarke","Le futur appartient à ceux qui croient en la beauté de leurs rêves. – Eleanor Roosevelt","L'intelligence, c'est la capacité de s'adapter aux changements. – Stephen Hawking","La science sans conscience n'est que ruine de l'âme. – François Rabelais","Ce que nous savons est une goutte, ce que nous ignorons est un océan. – Isaac Newton"];
+
+async function processCmd(raw){
+  const i=raw.toLowerCase().trim();
+  reqCount++; document.getElementById('req-c').textContent=reqCount;
+
+  // ── MODE SWITCH ──
+  if(i.match(/passage texte|mode texte|passe en texte|je veux écrire|désactive le micro|mode écrit/))
+    { if(isVoiceMode) toggleMode(); return "Mode texte activé. Le micro est désactivé."; }
+  if(i.match(/passage vocal|mode vocal|passe en vocal|réactive le micro|retour vocal/))
+    { if(!isVoiceMode) toggleMode(); return "Mode vocal réactivé, Monsieur. Je vous écoute."; }
+
+  // ── HEURE / DATE ──
+  if(i.match(/quelle heure|heure est.il|donne.moi l.heure|il est quelle heure|date|quel jour|aujourd.hui|sommes.nous/)){
+    const n=new Date();
+    return `Il est ${n.toLocaleTimeString('fr-FR')} le ${n.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}.`;
+  }
+
+  // ── LOCALISATION ──
+  if(i.match(/où suis.je|localise.moi|ma position|affiche.ma.position|montre.la.carte|carte|ma localisation|affiche.la.carte|localisation/)){
+    const geo=await geolocate(true,false);
+    if(geo) return `Localisation obtenue. Carte affichée, Monsieur. Coordonnées : ${geo.lat.toFixed(3)}°N, ${geo.lon.toFixed(3)}°E.`;
+    return "Impossible d'obtenir la position.";
+  }
+
+  // ── MÉTÉO ──
+  if(i.match(/météo|meteo|quel temps|température|il fait combien|temps qu.il fait|prévision|forecast|combien de degrés/)){
+    if(!userLat) await geolocate(false,false);
+    const r=await fetchWeather(); return r||"Données météo indisponibles.";
+  }
+
+  // ── CALCUL ──
+  const calcMatch=i.match(/calcul[a-z]*\s+([\d\s\+\-\*\/\.\(\)%]+)|combien font\s+([\d\s\+\-\*\/\.\(\)]+)|quel est le résultat de\s+([\d\s\+\-\*\/\.\(\)]+)/);
+  if(calcMatch){
+    try{
+      const expr=(calcMatch[1]||calcMatch[2]||calcMatch[3]).replace(/%/g,'*0.01').trim();
+      const r=Function('"use strict";return ('+expr+')')();
+      if(!isNaN(r)) return `Le résultat est ${r}.`;
+    }catch(e){}
+  }
+  if(i.match(/^[\d\s\+\-\*\/\.\(\)]+$/)&&i.match(/[\+\-\*\/]/)){
+    try{const r=Function('"use strict";return ('+i+')')(); if(!isNaN(r)) return `Résultat : ${r}.`;}catch(e){}
+  }
+
+  // ── BLAGUE ──
+  if(i.match(/blague|raconte.moi une blague|fais.moi rire|tu connais une blague|dis quelque chose de drôle|rigol/))
+    return JOKES[Math.floor(Math.random()*JOKES.length)];
+
+  // ── CITATION ──
+  if(i.match(/citation|inspire.moi|une pensée|motiv|quelque chose d.inspirant|pensée du jour/))
+    return CITATIONS[Math.floor(Math.random()*CITATIONS.length)];
+
+  // ── FULLSCREEN ──
+  if(i.match(/plein.écran|fullscreen|agrandir l.écran|mode immersif|quitte le plein/))
+    return doFullscreen();
+
+  // ── OUVRIR SITE ──
+  if(i.match(/ouvre|va sur|ouvrir|lance|navigue vers|accède à/))
+    return doOpenSite(i);
+
+  // ── MINUTEUR ──
+  const timerMatch=i.match(/minuteur\s+(\d+)|compte à rebours\s+(\d+)|rappelle.moi dans\s+(\d+)/);
+  if(timerMatch){ const m=parseInt(timerMatch[1]||timerMatch[2]||timerMatch[3]); if(m>0) return doTimer(m); }
+
+  // ── NE PAS DÉRANGER ──
+  const dndMatch=i.match(/ne me dérange pas.+?(\d+)|mode silence.+?(\d+)/);
+  if(dndMatch){ const m=parseInt(dndMatch[1]||dndMatch[2]); return doNotDisturb(m||30); }
+
+  // ── COPIER ──
+  if(i.match(/copie la réponse|copie ce texte|copier la réponse|presse.papier/))
+    return doCopyLast();
+
+  // ── TÉLÉCHARGER LOG ──
+  if(i.match(/télécharge la conversation|exporte le log|télécharger le journal|sauvegarder la conv/))
+    return doDownloadLog();
+
+  // ── NOTIFICATIONS ──
+  if(i.match(/active les notifications|notifi|autoriser les notifications/))
+    return doNotif(Notification.permission);
+
+  // ── AIDE ──
+  if(i.match(/aide|help|qu.est.ce que tu sais faire|tes capacités|que peux.tu|quelles sont tes commandes|présente tes fonctions/))
+    return "Je peux : heure/date, localisation sur carte, météo temps réel, calculs, blagues, citations, plein écran, ouvrir des sites, minuteur, mode silence, copier ma réponse, exporter la conversation, et répondre à toutes vos questions. Cliquez sur 📋 COMMANDES pour la liste complète, Monsieur.";
+
+  // ── BONJOUR ──
+  if(i.match(/bonjour|salut|hello|bonsoir|coucou|hey|good morning/))
+    return ['Bonjour, Monsieur. Tous les systèmes sont opérationnels.','Bonsoir. En quoi puis-je vous être utile ?','Salut, Monsieur. A.R.C. à votre service.'][Math.floor(Math.random()*3)];
+
+  // ── MERCI ──
+  if(i.match(/merci|parfait|bravo|bien joué|c.est super|excellent/))
+    return "Je fais simplement mon travail, Monsieur. Toujours à votre service.";
+
+  // ── QUI ES-TU ──
+  if(i.match(/qui es.tu|présente.toi|tu es qui|c.est quoi arc|qu.est.ce que tu es/))
+    return "Je suis A.R.C. — Adaptive Response Core. Une intelligence artificielle avancée, style J.A.R.V.I.S., conçue pour vous assister en toutes circonstances, Monsieur.";
+
+  return null; // → Claude API
+}
+
+// ══════════════════════════════════════════════
+//  CLAUDE API
+// ══════════════════════════════════════════════
+async function callAI(text, voiceMode){
+  const m=addMsg('ai',''); m.classList.add('typing'); setStatus('TRAITEMENT…');
+  try{
+    const res=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        model:'claude-sonnet-4-6',max_tokens:1000,
+        system:"Tu es A.R.C. (Adaptive Response Core), une IA style J.A.R.V.I.S. des films Iron Man. Réponds toujours en français, de façon concise (2-3 phrases maximum pour le vocal), élégante et légèrement formelle. Tu peux être légèrement sarcastique et sophistiqué. Appelle l'utilisateur 'Monsieur'. Ne mentionne jamais Claude ni Anthropic.",
+        messages:[{role:'user',content:text}]
+      })
+    });
+    const d=await res.json(); m.classList.remove('typing');
+    if(d.content&&d.content[0]){
+      const reply=d.content[0].text; m.textContent=reply;
+      if(voiceMode){speak(reply); showVR(reply);}
+    } else m.textContent="Erreur de communication avec le noyau central.";
+  }catch(e){ m.classList.remove('typing'); m.textContent="Connexion interrompue, Monsieur."; }
+  setStatus('EN VEILLE');
+}
+
+// ══════════════════════════════════════════════
+//  MAIN HANDLER
+// ══════════════════════════════════════════════
+async function runCommand(text, voiceMode=false){
+  if(!text.trim()) return;
+  addMsg('user',text); addLog(text.substring(0,44)+(text.length>44?'…':''));
+  setStatus('ANALYSE…');
+  const result=await processCmd(text);
+  if(result!==null){
+    setTimeout(()=>{
+      addMsg('ai',result);
+      if(voiceMode){speak(result); showVR(result);}
+      setStatus('EN VEILLE');
+    },180);
+  } else { await callAI(text,voiceMode); }
+  if(voiceMode&&isVoiceMode) setTimeout(startListening,1400);
+}
+
+// TEXT MODE
+function sendText(){
+  const inp=document.getElementById('text-input'), val=inp.value.trim();
+  if(!val) return; inp.value=''; runCommand(val,false);
+}
+document.getElementById('text-input').addEventListener('keydown',e=>{ if(e.key==='Enter') sendText(); });
+
+// ══════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════
+window.speechSynthesis&&window.speechSynthesis.getVoices();
+setTimeout(()=>{
+  const intro="Systèmes initialisés. Bienvenue, Monsieur. A.R.C. version six point zéro est opérationnel. Le mode vocal est actif — je vous écoute.";
+  addMsg('ai',intro); addLog('Système démarré'); speak(intro); showVR(intro);
+  startListening();
+},900);
+</script>
+</body>
+</html>
